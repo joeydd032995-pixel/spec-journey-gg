@@ -13,6 +13,7 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def _refresh_games() -> None:
+    """Refresh the games/schedule cache and persist a new DB snapshot."""
     try:
         scraper.build_feed(days=config.DEFAULT_FEED_DAYS, min_gp=1)
         scraper.get_schedule()
@@ -25,6 +26,7 @@ def _refresh_games() -> None:
 
 
 def _refresh_players() -> None:
+    """Refresh the players/standings cache and persist a new DB snapshot."""
     try:
         scraper.get_players(min_gp=1)
         scraper.get_standings()
@@ -36,6 +38,7 @@ def _refresh_players() -> None:
 
 
 def _deep_archive() -> None:
+    """Run the nightly deep archive job to accumulate completed games in game_history."""
     try:
         inserted = scraper.deep_archive(days=config.ARCHIVE_DAYS)
         log.info("deep_archive job complete: %d new rows", inserted)
@@ -44,6 +47,7 @@ def _deep_archive() -> None:
 
 
 def start() -> BackgroundScheduler | None:
+    """Start the APScheduler background scheduler; returns None when all intervals are 0."""
     global _scheduler
     has_refresh = config.REFRESH_GAMES_MIN > 0 or config.REFRESH_PLAYERS_MIN > 0
     has_archive = config.ARCHIVE_DAYS > 0
@@ -67,5 +71,6 @@ def start() -> BackgroundScheduler | None:
 
 
 def shutdown() -> None:
+    """Gracefully stop the background scheduler without waiting for running jobs."""
     if _scheduler:
         _scheduler.shutdown(wait=False)

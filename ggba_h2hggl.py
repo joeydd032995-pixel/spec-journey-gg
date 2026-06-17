@@ -52,7 +52,10 @@ REQUEST_TIMEOUT = 25.0
 # HTTP client
 # --------------------------------------------------------------------------- #
 class _Client:
+    """Minimal polite HTTP client for the h2hggl/hudstats JSON API."""
+
     def __init__(self) -> None:
+        """Initialize the HTTP client with polite-delay tracking."""
         self._last = 0.0
         self._http = httpx.Client(
             timeout=REQUEST_TIMEOUT,
@@ -65,6 +68,7 @@ class _Client:
         )
 
     def _get(self, path: str, params: dict | None = None) -> Any:
+        """GET *path* with polite rate-limiting; raises on HTTP errors."""
         gap = POLITE_DELAY_S - (time.time() - self._last)
         if gap > 0:
             time.sleep(gap)
@@ -74,10 +78,12 @@ class _Client:
         return resp.json()
 
     def participants(self) -> list[dict]:
+        """Return all participant records with full season stats."""
         data = self._get(f"participant/{SPORT}")
         return data if isinstance(data, list) else []
 
     def schedule_day(self, day: datetime) -> list[dict]:
+        """Return fixtures for a single UTC calendar day."""
         iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
         data = self._get(f"schedule/{SPORT}", params={"date": iso})
         return data if isinstance(data, list) else []
@@ -94,6 +100,7 @@ class _Client:
         return out
 
     def close(self) -> None:
+        """Close the underlying HTTP connection pool."""
         self._http.close()
 
 
@@ -104,6 +111,7 @@ ENDED = "MATCH_ENDED"
 
 
 def _num(v: Any) -> float | str:
+    """Coerce *v* to a 2-decimal float, or return '' if the value is absent or non-numeric."""
     if v is None:
         return ""
     try:
@@ -113,6 +121,7 @@ def _num(v: Any) -> float | str:
 
 
 def _parse_game(ev: dict) -> dict | None:
+    """Map one schedule entry to an internal game dict, or None if participants are missing."""
     a, b = ev.get("participantAName"), ev.get("participantBName")
     if not a or not b:
         return None
@@ -136,6 +145,7 @@ def _parse_game(ev: dict) -> dict | None:
 
 
 def _ended_games(events: list[dict]) -> list[dict]:
+    """Filter and sort ended games with valid numeric scores from a raw event list."""
     games = []
     for ev in events:
         g = _parse_game(ev)
@@ -149,6 +159,7 @@ def _ended_games(events: list[dict]) -> list[dict]:
 
 
 def _aggregate_players(participants: list[dict], min_gp: int = 1) -> list[dict]:
+    """Convert participant records to sorted player rows, filtered by minimum games played."""
     rows = []
     for p in participants:
         won = int(p.get("matchesWon") or 0)
@@ -171,6 +182,7 @@ def _aggregate_players(participants: list[dict], min_gp: int = 1) -> list[dict]:
 
 
 def _build_standings(participants: list[dict]) -> list[dict]:
+    """Build a rank-ordered standings table from participant records."""
     rows = []
     for p in participants:
         won = int(p.get("matchesWon") or 0)
@@ -194,12 +206,16 @@ def _build_standings(participants: list[dict]) -> list[dict]:
 
 # Leakage-free walk-forward accumulator
 class _Agg:
+    """Per-player stat accumulator for the leakage-free walk-forward builder."""
+
     def __init__(self) -> None:
+        """Initialize all counters and history to zero/empty."""
         self.gp = self.w = self.l = 0
         self.pts = 0.0
         self.history: list[tuple[int, str]] = []
 
     def add(self, ts: int, scored: float, won: bool) -> None:
+        """Record one game result into the accumulator."""
         self.gp += 1
         self.pts += scored
         if won:
@@ -209,11 +225,13 @@ class _Agg:
         self.history.append((ts, "W" if won else "L"))
 
     def recent_form(self, n: int = 5) -> str:
+        """Return the most recent *n* results as a string of 'W'/'L' characters."""
         return "".join(
             h[1] for h in sorted(self.history, key=lambda x: x[0], reverse=True)[:n]
         )
 
     def snap(self) -> dict:
+        """Return a pre-game stats snapshot; empty strings signal no prior history."""
         if self.gp == 0:
             return {"win_pct": "", "ppm": "", "form": "", "gp": 0}
         return {
@@ -225,6 +243,7 @@ class _Agg:
 
 
 def _build_walkforward(games: list[dict]) -> list[dict]:
+    """Build leakage-free walk-forward rows: pre-game snapshots then state update."""
     state: dict[str, _Agg] = {}
     rows = []
     for g in games:
@@ -247,6 +266,7 @@ def _build_walkforward(games: list[dict]) -> list[dict]:
 
 
 def _filter_h2h(games: list[dict], p1: str, p2: str) -> list[dict]:
+    """Return games involving both *p1* and *p2*, normalizing so p1 is always listed first."""
     p1l, p2l = p1.lower(), p2.lower()
     out = []
     for g in games:
@@ -266,6 +286,7 @@ def _filter_h2h(games: list[dict], p1: str, p2: str) -> list[dict]:
 # Pretty-print table
 # --------------------------------------------------------------------------- #
 def _fmt(v: Any, width: int = 0) -> str:
+    """Format a value for tabular display; floats get one decimal, missing values become '-'."""
     if isinstance(v, float):
         s = f"{v:.1f}"
     elif v == "" or v is None:
@@ -276,6 +297,7 @@ def _fmt(v: Any, width: int = 0) -> str:
 
 
 def _table(rows: list[dict], cols: list[str], headers: list[str] | None = None) -> None:
+    """Print *rows* as a fixed-width table using the specified *cols* and optional *headers*."""
     if not rows:
         print("  (no data)")
         return
@@ -295,6 +317,7 @@ def _table(rows: list[dict], cols: list[str], headers: list[str] | None = None) 
 # Commands
 # --------------------------------------------------------------------------- #
 def cmd_players(args: argparse.Namespace) -> None:
+    """Print a player stats table with FG%, steals, fouls, and recent form."""
     print("Fetching players...", end="", flush=True)
     c = _Client()
     try:
@@ -316,6 +339,7 @@ def cmd_players(args: argparse.Namespace) -> None:
 
 
 def cmd_standings(args: argparse.Namespace) -> None:
+    """Print the league standings table ranked by win percentage."""
     print("Fetching standings...", end="", flush=True)
     c = _Client()
     try:
@@ -333,6 +357,7 @@ def cmd_standings(args: argparse.Namespace) -> None:
 
 
 def cmd_schedule(args: argparse.Namespace) -> None:
+    """Print upcoming (not-yet-ended) fixtures for the requested number of days ahead."""
     days = args.days
     print(f"Fetching upcoming fixtures (next {days} days)...", end="", flush=True)
     c = _Client()
@@ -361,6 +386,7 @@ def cmd_schedule(args: argparse.Namespace) -> None:
 
 
 def cmd_h2h(args: argparse.Namespace) -> None:
+    """Print head-to-head record and game-by-game results for two players."""
     p1, p2, days = args.player1, args.player2, args.days
     print(f"Fetching {days} days of games for {p1} vs {p2}...", end="", flush=True)
     c = _Client()
@@ -388,6 +414,7 @@ def cmd_h2h(args: argparse.Namespace) -> None:
 
 
 def cmd_matchup(args: argparse.Namespace) -> None:
+    """Print a full matchup analysis: individual stats, PPM model, H2H summary, and edge."""
     p1, p2, days = args.player1, args.player2, args.days
     print(f"Fetching data for '{p1}' vs '{p2}' (last {days} days)...", end="", flush=True)
     c = _Client()
@@ -468,6 +495,7 @@ def cmd_matchup(args: argparse.Namespace) -> None:
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
+    """Print walk-forward model accuracy summary: total distribution and win%-model accuracy."""
     days = args.days
     print(f"Fetching {days} days of walk-forward data...", end="", flush=True)
     c = _Client()
@@ -516,6 +544,7 @@ def cmd_analyze(args: argparse.Namespace) -> None:
 
 
 def cmd_export(args: argparse.Namespace) -> None:
+    """Export players, standings, walk-forward, and matches to CSV files for offline analysis."""
     days, out_dir, min_gp = args.days, args.out, args.min_gp
     os.makedirs(out_dir, exist_ok=True)
     print(f"Fetching {days} days of data...", end="", flush=True)
@@ -564,6 +593,7 @@ def cmd_export(args: argparse.Namespace) -> None:
 # Argument parser
 # --------------------------------------------------------------------------- #
 def _build_parser() -> argparse.ArgumentParser:
+    """Build and return the CLI argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="ggba_h2hggl",
         description="GGBetAnalyzer CLI — live H2H GG League stats, no web server needed.",
@@ -622,6 +652,7 @@ Examples:
 
 
 def main() -> None:
+    """Entry point: parse CLI arguments and dispatch to the requested subcommand."""
     args = _build_parser().parse_args()
     try:
         args.func(args)

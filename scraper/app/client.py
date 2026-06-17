@@ -21,7 +21,10 @@ from . import config
 
 
 class H2HGGLClient:
+    """Polite HTTP client for the h2hggl/hudstats internal JSON API."""
+
     def __init__(self, base: str | None = None, sport: str | None = None) -> None:
+        """Configure the HTTP client with optional overrides for API base and sport key."""
         self.base = (base or config.API_BASE).rstrip("/")
         self.sport = sport or config.API_SPORT
         self._last_request = 0.0
@@ -61,10 +64,12 @@ class H2HGGLClient:
 
     # -- endpoints ----------------------------------------------------------- #
     def participants(self) -> list[dict]:
+        """Fetch all participant records (full season stats) for the configured sport."""
         data = self._get(f"participant/{self.sport}")
         return data if isinstance(data, list) else []
 
     def schedule_day(self, day: datetime) -> list[dict]:
+        """Fetch the fixture list for a single UTC calendar day."""
         iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
         data = self._get(f"schedule/{self.sport}", params={"date": iso})
         return data if isinstance(data, list) else []
@@ -78,4 +83,5 @@ class H2HGGLClient:
         return out
 
     def close(self) -> None:
+        """Close the underlying HTTP connection pool."""
         self._client.close()

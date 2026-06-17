@@ -10,6 +10,7 @@ import os
 
 
 def _int(name: str, default: int) -> int:
+    """Read an integer environment variable, returning *default* if absent or non-numeric."""
     try:
         return int(os.environ.get(name, default))
     except (TypeError, ValueError):

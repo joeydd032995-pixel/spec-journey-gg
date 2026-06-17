@@ -55,6 +55,7 @@ def build_feed(days: int = config.DEFAULT_FEED_DAYS, min_gp: int = 1) -> dict:
 
 
 def get_players(min_gp: int = 1) -> list[dict]:
+    """Fetch all participants from the API and return normalized player rows."""
     client = H2HGGLClient()
     try:
         participants = client.participants()
@@ -67,6 +68,7 @@ def get_players(min_gp: int = 1) -> list[dict]:
 
 
 def get_standings() -> list[dict]:
+    """Fetch participant data and return standings rows sorted by win percentage."""
     client = H2HGGLClient()
     try:
         participants = client.participants()
@@ -94,6 +96,7 @@ def get_schedule(days: int = 2) -> list[dict]:
 
 
 def get_games(days: int = config.DEFAULT_FEED_DAYS) -> list[dict]:
+    """Fetch and return normalized match records for completed games in the last *days* days."""
     client = H2HGGLClient()
     try:
         events = client.schedule_range(days)
