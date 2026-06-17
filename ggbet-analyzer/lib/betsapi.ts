@@ -181,23 +181,29 @@ export class BetsAPIClient {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
 
     for (let attempt = 1; attempt <= 3; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
       try {
         const res = await fetch(url.toString(), {
+          signal: controller.signal,
           headers: { Accept: "application/json", "User-Agent": "GGBetAnalyzer/1.0" },
           // Next.js fetch cache: revalidate every 5 min
           next: { revalidate: 300 },
         });
 
         if (res.status === 429 || res.status >= 500) {
+          clearTimeout(timer);
           await sleep(Math.pow(2, attempt) * 1000);
           continue;
         }
 
         const data = await res.json();
+        clearTimeout(timer);
         if (!data?.success) throw new Error(`BetsAPI error on ${path}: ${JSON.stringify(data).slice(0, 200)}`);
         await sleep(POLITE_DELAY_MS);
         return data;
       } catch (e) {
+        clearTimeout(timer);
         if (attempt === 3) throw e;
         this.hostIdx++;
         await sleep(1500 * attempt);

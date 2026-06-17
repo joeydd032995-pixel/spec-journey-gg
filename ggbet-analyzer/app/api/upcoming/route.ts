@@ -17,6 +17,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const source = searchParams.get("source") ?? "h2hggl";
 
+  if (source !== "h2hggl" && source !== "betsapi") {
+    return NextResponse.json(
+      { error: `Unknown source '${source}'. Use 'h2hggl' or 'betsapi'.` },
+      { status: 400 },
+    );
+  }
+
   if (source === "h2hggl") {
     try {
       const upcoming = await fetchH2hgglUpcoming(2);
@@ -31,7 +38,8 @@ export async function GET(req: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: "BETSAPI_TOKEN not configured." }, { status: 500 });
   }
-  const leagueId = parseInt(searchParams.get("leagueId") ?? String(DEFAULT_LEAGUE_ID), 10);
+  const leagueIdRaw = Number.parseInt(searchParams.get("leagueId") ?? String(DEFAULT_LEAGUE_ID), 10);
+  const leagueId = Number.isFinite(leagueIdRaw) ? leagueIdRaw : DEFAULT_LEAGUE_ID;
   try {
     const client   = new BetsAPIClient(token);
     const upcoming = await client.fetchUpcoming(leagueId);

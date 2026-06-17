@@ -73,7 +73,7 @@ def player(player_id: str, minGp: int = Query(1, ge=1)):
 
 @app.get("/api/schedule")
 def schedule(days: int = Query(2, ge=1, le=14)):
-    return _served("schedule", lambda: scraper.get_schedule(days=days))
+    return _served(f"schedule:{days}", lambda: scraper.get_schedule(days=days))
 
 
 @app.get("/api/games")
@@ -98,7 +98,7 @@ def h2h(p1: str = Query(..., description="First player name"),
     if result["total"] == 0:
         # Trigger a fresh archive pass so first-time callers get data without waiting
         try:
-            scraper.deep_archive(days=config.DEFAULT_FEED_DAYS)
+            scraper.deep_archive(days=config.ARCHIVE_DAYS)
             result = db.head_to_head(p1, p2, limit=limit)
         except Exception as e:
             log.warning("h2h on-demand archive failed: %s", e)

@@ -24,6 +24,11 @@ import {
 
 export const maxDuration = 60; // Vercel Pro: up to 60s; Hobby: 10s (use fewer days)
 
+function parseIntSafe(value: unknown, fallback: number): number {
+  const n = Number.parseInt(String(value), 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export async function POST(req: NextRequest) {
   const token = process.env.BETSAPI_TOKEN;
   if (!token) {
@@ -36,9 +41,9 @@ export async function POST(req: NextRequest) {
   let body: { days?: unknown; leagueId?: unknown; minGp?: unknown } = {};
   try { body = await req.json(); } catch { /* empty body is fine */ }
 
-  const days    = Math.min(Math.max(parseInt(String(body.days    ?? 7),  10), 1), 90);
-  const leagueId = parseInt(String(body.leagueId ?? DEFAULT_LEAGUE_ID), 10);
-  const minGp   = Math.max(parseInt(String(body.minGp ?? 1), 10), 1);
+  const days    = Math.min(Math.max(parseIntSafe(body.days ?? 7, 7), 1), 90);
+  const leagueId = parseIntSafe(body.leagueId ?? DEFAULT_LEAGUE_ID, DEFAULT_LEAGUE_ID);
+  const minGp   = Math.max(parseIntSafe(body.minGp ?? 1, 1), 1);
 
   try {
     const client = new BetsAPIClient(token);
@@ -70,9 +75,9 @@ export async function POST(req: NextRequest) {
 // Also support GET with query params (handy for quick browser testing)
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const days     = parseInt(searchParams.get("days")     ?? "7",  10);
-  const leagueId = parseInt(searchParams.get("leagueId") ?? String(DEFAULT_LEAGUE_ID), 10);
-  const minGp    = parseInt(searchParams.get("minGp")    ?? "1",  10);
+  const days     = parseIntSafe(searchParams.get("days"),     7);
+  const leagueId = parseIntSafe(searchParams.get("leagueId"), DEFAULT_LEAGUE_ID);
+  const minGp    = parseIntSafe(searchParams.get("minGp"),    1);
   return POST(
     new NextRequest(req.url, {
       method: "POST",

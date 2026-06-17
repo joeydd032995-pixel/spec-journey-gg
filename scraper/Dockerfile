@@ -12,12 +12,17 @@ WORKDIR /srv
 # Install runtime deps only (skip playwright/pytest for the slim image).
 COPY requirements.txt .
 RUN pip install \
-      "fastapi==0.115.6" "uvicorn[standard]==0.34.0" "httpx==0.28.1" \
+      "fastapi==0.116.2" "uvicorn[standard]==0.34.0" "httpx==0.28.1" \
       "apscheduler==3.11.0" "pydantic==2.10.4"
 
 COPY app ./app
 
-RUN mkdir -p /data
+RUN mkdir -p /data && \
+    groupadd -r app && useradd -r -g app -d /srv -s /sbin/nologin app && \
+    chown -R app:app /data /srv
+
+USER app
+
 VOLUME ["/data"]
 EXPOSE 8000
 

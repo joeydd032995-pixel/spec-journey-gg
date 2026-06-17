@@ -31,10 +31,12 @@ headless browser, in case the site ever changes.
 | GET | `/health` | liveness + configured source |
 | GET | `/api/standings` | participants ranked by win % |
 | GET | `/api/players?minGp=N` | full roster with FG%/steals/fouls |
-| GET | `/api/players/{name}` | one player |
+| GET | `/api/players/{player_id}` | one player (lookup by name) |
 | GET | `/api/schedule?days=N` | upcoming fixtures |
 | GET | `/api/games?days=N` | recent ended matches |
 | GET | `/api/feed?days=N&minGp=M` | **bridge**: `{ walkforward, players, matches, meta }` for GGBetAnalyzer |
+| GET | `/api/h2h?p1=X&p2=Y&limit=20` | head-to-head record from permanent archive |
+| GET | `/api/history?limit=200` | recent rows from permanent game archive |
 
 ## Run locally
 

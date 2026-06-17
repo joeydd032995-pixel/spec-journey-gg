@@ -27,8 +27,11 @@ def client(monkeypatch, tmp_path):
     from app import config as _cfg
     importlib.reload(_cfg)
     from app import cache, db, client as _client, scraper, main
-    importlib.reload(cache); importlib.reload(db); importlib.reload(_client)
-    importlib.reload(scraper); importlib.reload(main)
+    importlib.reload(cache)
+    importlib.reload(db)
+    importlib.reload(_client)
+    importlib.reload(scraper)
+    importlib.reload(main)
 
     parts = load("participants_nba.json")
     events = load("schedule_2026-06-15.json") + load("schedule_2026-06-16.json")
