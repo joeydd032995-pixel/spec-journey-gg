@@ -52,6 +52,7 @@ def participant_to_player_row(p: dict, team: str = "") -> dict:
 
 def aggregate_players(participants: Iterable[dict], min_gp: int = 1,
                       team_by_player: dict[str, str] | None = None) -> list[dict]:
+    """Convert participant records to sorted player rows, optionally enriched with team data."""
     team_by_player = team_by_player or {}
     rows = []
     for p in participants:
@@ -109,13 +110,17 @@ def ended_games(events: Iterable[dict]) -> list[dict]:
 # Per-player accumulator (mirrors PlayerAgg in lib/betsapi.ts)                  #
 # --------------------------------------------------------------------------- #
 class _Agg:
+    """Per-player stat accumulator used by the leakage-free walk-forward builder."""
+
     def __init__(self) -> None:
+        """Initialize all counters to zero."""
         self.gp = self.w = self.l = 0
         self.pts = 0.0
         self.teams: dict[str, int] = {}
         self.history: list[tuple[int, str]] = []
 
     def add(self, ts: int, team: str, scored: float, won: bool) -> None:
+        """Record one game result into the accumulator."""
         self.gp += 1
         self.pts += scored
         if won:
@@ -127,9 +132,11 @@ class _Agg:
         self.history.append((ts, "W" if won else "L"))
 
     def recent_form(self, n: int = 5) -> str:
+        """Return the most recent *n* results as a string of 'W'/'L' characters."""
         return "".join(h[1] for h in sorted(self.history, key=lambda x: x[0], reverse=True)[:n])
 
     def snap(self) -> dict:
+        """Return a pre-game snapshot of stats; empty strings signal no history yet."""
         if self.gp == 0:
             return {"win_pct": "", "ppm": "", "form": "", "gp": 0}
         return {
@@ -140,6 +147,7 @@ class _Agg:
         }
 
     def modal_team(self) -> str:
+        """Return the NBA team skin this player appeared with most often."""
         return max(self.teams, key=self.teams.get) if self.teams else ""
 
 
@@ -166,6 +174,7 @@ def build_walkforward(games: list[dict]) -> list[dict]:
 
 
 def build_matches(games: list[dict]) -> list[dict]:
+    """Flatten ended games into lightweight match records with scores and division."""
     return [{
         "date": g["date"], "player1": g["p1"], "player2": g["p2"],
         "score1": g["s1"], "score2": g["s2"], "total": g["s1"] + g["s2"],
@@ -183,6 +192,7 @@ def team_map(games: list[dict]) -> dict[str, str]:
 
 
 def build_standings(participants: Iterable[dict]) -> list[dict]:
+    """Build a rank-ordered standings table from participant records."""
     rows = []
     for p in participants:
         won = int(p.get("matchesWon") or 0)

@@ -20,6 +20,7 @@ def _conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    """Create all tables and indexes if they do not yet exist."""
     with _lock, _conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS players (
@@ -53,6 +54,7 @@ def init_db() -> None:
 
 
 def upsert_players(rows: list[dict]) -> None:
+    """Insert or update player stat rows in the players table."""
     with _lock, _conn() as c:
         for r in rows:
             c.execute("""
@@ -73,6 +75,7 @@ def upsert_players(rows: list[dict]) -> None:
 
 
 def upsert_games(games: list[dict]) -> None:
+    """Insert or update ended game rows in the games table."""
     with _lock, _conn() as c:
         for g in games:
             c.execute("""
@@ -176,6 +179,7 @@ def history_games(limit: int = 200) -> list[dict]:
 
 
 def save_snapshot(key: str, payload: Any) -> None:
+    """Persist a normalized payload as a JSON snapshot under *key* for cache-miss fallback."""
     with _lock, _conn() as c:
         c.execute(
             "INSERT INTO snapshots (key, payload, updated_at) VALUES (?,?,?) "
@@ -185,6 +189,7 @@ def save_snapshot(key: str, payload: Any) -> None:
 
 
 def load_snapshot(key: str) -> Any | None:
+    """Load and deserialize the stored snapshot for *key*, or return None if absent."""
     with _lock, _conn() as c:
         row = c.execute("SELECT payload FROM snapshots WHERE key=?", (key,)).fetchone()
     return json.loads(row["payload"]) if row else None

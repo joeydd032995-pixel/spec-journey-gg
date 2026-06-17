@@ -19,6 +19,7 @@ log = logging.getLogger("h2hggl.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize the DB and start background jobs on startup; shut down cleanly on exit."""
     db.init_db()
     scheduler.start()
     yield
@@ -48,21 +49,25 @@ def _served(key: str, fetch_fn, snapshot_key: str | None = None):
 
 @app.get("/health")
 def health():
+    """Liveness check — returns service status, sport key, and API base URL."""
     return {"status": "ok", "sport": config.API_SPORT, "source": config.API_BASE}
 
 
 @app.get("/api/standings")
 def standings():
+    """Return league standings ranked by win percentage."""
     return _served("standings", scraper.get_standings)
 
 
 @app.get("/api/players")
 def players(minGp: int = Query(1, ge=1)):
+    """Return normalized player rows filtered to those with at least *minGp* games played."""
     return _served(f"players:{minGp}", lambda: scraper.get_players(min_gp=minGp), "players:1")
 
 
 @app.get("/api/players/{player_id}")
 def player(player_id: str, minGp: int = Query(1, ge=1)):
+    """Look up a single player by name (case-insensitive); raises 404 if not found."""
     rows = _served(f"players:{minGp}", lambda: scraper.get_players(min_gp=minGp), "players:1")
     pid = player_id.lower()
     for r in rows:
@@ -73,11 +78,13 @@ def player(player_id: str, minGp: int = Query(1, ge=1)):
 
 @app.get("/api/schedule")
 def schedule(days: int = Query(2, ge=1, le=14)):
+    """Return upcoming (not-yet-ended) fixtures for the next *days* days."""
     return _served(f"schedule:{days}", lambda: scraper.get_schedule(days=days))
 
 
 @app.get("/api/games")
 def games(days: int = Query(config.DEFAULT_FEED_DAYS, ge=1, le=90)):
+    """Return completed match records for the last *days* days."""
     return _served(f"games:{days}", lambda: scraper.get_games(days=days), f"games:{days}")
 
 

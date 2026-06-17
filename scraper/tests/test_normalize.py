@@ -11,6 +11,7 @@ FIX = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
 def load(name):
+    """Load a JSON fixture file from the fixtures directory."""
     with open(os.path.join(FIX, name)) as f:
         return json.load(f)
 
