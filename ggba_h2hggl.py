@@ -611,7 +611,7 @@ Examples:
     )
     subs = parser.add_subparsers(dest="cmd", required=True)
 
-    sp = subs.add_parser("players", help="List all players with stats (FG%, steals, fouls, …)")
+    sp = subs.add_parser("players", help="List all players with stats (FG%%, steals, fouls, …)")
     sp.add_argument("--min-gp", type=int, default=1, dest="min_gp",
                     help="Minimum games played filter (default: 1)")
     sp.add_argument("--filter", default="", help="Filter by name substring")
