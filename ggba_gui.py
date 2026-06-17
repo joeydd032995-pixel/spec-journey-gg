@@ -613,11 +613,19 @@ def _matchup_text(p1: str, p2: str, days: int,
         p2_ppm = pp2.get("pts_per_match")
         if isinstance(p1_ppm, (int, float)) and isinstance(p2_ppm, (int, float)):
             exp = p1_ppm + p2_ppm
-            lines.append(f"\n  Expected total (PPM model): {exp:.1f}")
-            if totals:
-                avg_t = statistics.mean(totals)
-                lines.append(
-                    f"  vs H2H average:            {avg_t:.1f}  (diff: {exp - avg_t:+.1f})")
+            lines.append(f"\n  PPM Model  (season scoring averages)")
+            lines.append(f"  {'─'*58}")
+            lines.append(f"  {'':20} {'PPM':>6}  {'H2H Avg':>8}  {'Diff':>6}")
+            ppm_rows = [
+                ("Total  (both)",       exp,    statistics.mean(totals)    if totals    else None),
+                (f"Home   ({p1[:14]})", p1_ppm, statistics.mean(p1_scores) if p1_scores else None),
+                (f"Away   ({p2[:14]})", p2_ppm, statistics.mean(p2_scores) if p2_scores else None),
+            ]
+            for label, ppm_val, h2h_avg in ppm_rows:
+                if h2h_avg is not None:
+                    lines.append(f"  {label:<20} {ppm_val:>6.1f}  {h2h_avg:>8.1f}  {ppm_val - h2h_avg:>+6.1f}")
+                else:
+                    lines.append(f"  {label:<20} {ppm_val:>6.1f}  {'—':>8}")
 
         wp1 = pp1.get("win_pct")
         wp2 = pp2.get("win_pct")

@@ -508,16 +508,25 @@ def cmd_matchup(args: argparse.Namespace) -> None:
         else:
             print(f"  {label:<20}  insufficient H2H data (n={len(seq)}) — try --days 90")
 
-    # PPM-based expected total
+    # PPM-based expected totals
     if pp1 and pp2:
         p1_ppm = pp1.get("pts_per_match")
         p2_ppm = pp2.get("pts_per_match")
         if isinstance(p1_ppm, (int, float)) and isinstance(p2_ppm, (int, float)):
             exp = p1_ppm + p2_ppm
-            avg_t = statistics.mean(totals) if totals else None
-            print(f"\n  Expected total (PPM model): {exp:.1f}")
-            if avg_t is not None:
-                print(f"  vs H2H average:            {avg_t:.1f}  (diff: {exp - avg_t:+.1f})")
+            print(f"\n  PPM Model  (season scoring averages)")
+            print(f"  {'─'*58}")
+            print(f"  {'':20} {'PPM':>6}  {'H2H Avg':>8}  {'Diff':>6}")
+            ppm_rows = [
+                ("Total  (both)",       exp,    statistics.mean(totals)    if totals    else None),
+                (f"Home   ({p1[:14]})", p1_ppm, statistics.mean(p1_scores) if p1_scores else None),
+                (f"Away   ({p2[:14]})", p2_ppm, statistics.mean(p2_scores) if p2_scores else None),
+            ]
+            for label, ppm_val, h2h_avg in ppm_rows:
+                if h2h_avg is not None:
+                    print(f"  {label:<20} {ppm_val:>6.1f}  {h2h_avg:>8.1f}  {ppm_val - h2h_avg:>+6.1f}")
+                else:
+                    print(f"  {label:<20} {ppm_val:>6.1f}  {'—':>8}")
 
     # Win% edge
     if pp1 and pp2:
