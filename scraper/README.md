@@ -98,7 +98,7 @@ Add environment variable: `H2HGGL_CORS_ORIGINS=https://your-app.vercel.app`
 | GET | `/health` | Liveness + configured source |
 | GET | `/api/standings` | Participants ranked by win % |
 | GET | `/api/players?minGp=N` | Full roster with FG%/steals/fouls |
-| GET | `/api/players/{player_id}` | Single player lookup (by name) |
+| GET | `/api/players/{player_id}` | Single player lookup (by player name) |
 | GET | `/api/schedule?days=N` | Upcoming fixtures (default 2 days) |
 | GET | `/api/games?days=N` | Recent ended matches |
 | GET | `/api/feed?days=N&minGp=M` | **Bridge**: `{ walkforward, players, matches, meta }` for GGBetAnalyzer |

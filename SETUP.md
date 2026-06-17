@@ -294,7 +294,7 @@ Open your Vercel URL, go to Data Manager, and fetch. The dashboard should
 populate exactly as it did locally.
 
 > **Vercel plan note:** API route timeout is 10 s on Hobby and 60 s on Pro.
-> The scraper's cache means most fetch-games requests complete in < 1 s.
+> The scraper-backed H2H routes usually complete in < 1 s once cached.
 
 ---
 

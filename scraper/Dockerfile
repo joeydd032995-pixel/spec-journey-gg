@@ -12,7 +12,7 @@ WORKDIR /srv
 # Install runtime deps only (skip playwright/pytest for the slim image).
 COPY requirements.txt .
 RUN pip install \
-      "fastapi==0.116.2" "uvicorn[standard]==0.34.0" "httpx==0.28.1" \
+      "fastapi==0.133.0" "uvicorn[standard]==0.34.0" "httpx==0.28.1" \
       "apscheduler==3.11.0" "pydantic==2.10.4"
 
 COPY app ./app
