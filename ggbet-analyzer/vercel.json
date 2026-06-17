@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/fetch-games/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/h2hggl-games/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/upcoming/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
