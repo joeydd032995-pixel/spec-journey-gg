@@ -294,7 +294,7 @@ def _score_band(scores: list[float], half_width: float = 0.5) -> dict | None:
     if len(scores) < 3:
         return None
     mean = statistics.mean(scores)
-    std  = statistics.stdev(scores) if len(scores) > 1 else 0.0
+    std  = statistics.stdev(scores)
     low  = mean - half_width * std
     high = mean + half_width * std
     in_band = sum(1 for s in scores if low <= s <= high)
@@ -493,11 +493,11 @@ def cmd_matchup(args: argparse.Namespace) -> None:
             print(line)
 
     # Score prediction bands
-    print(f"\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
+    print("\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
     print(f"  {'─'*58}")
     print(f"  {'':20} {'Mean':>6}  {'Std':>5}  {'Band':^20}  {'Conf':>5}")
     for label, seq in [
-        (f"Total  (both)", totals),
+        ("Total  (both)", totals),
         (f"Home   ({p1[:14]})", p1_scores),
         (f"Away   ({p2[:14]})", p2_scores),
     ]:

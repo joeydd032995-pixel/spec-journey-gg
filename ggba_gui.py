@@ -589,7 +589,7 @@ def _matchup_text(p1: str, p2: str, days: int,
             lines.append(row)
 
     # Score prediction bands
-    lines.append(f"\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
+    lines.append("\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
     lines.append(f"  {'─'*58}")
     lines.append(f"  {'':20} {'Mean':>6}  {'Std':>5}  {'Band':^20}  {'Conf':>5}")
     for label, seq in [
