@@ -36,6 +36,7 @@ try:
         _ended_games,
         _filter_h2h,
         _fmt,
+        _score_band,
     )
 except ImportError as _exc:
     _msg = (
@@ -555,9 +556,11 @@ def _matchup_text(p1: str, p2: str, days: int,
     def _find(name: str) -> dict | None:
         return next((p for p in players if p["name"].lower() == name.lower()), None)
 
-    pp1, pp2 = _find(p1), _find(p2)
-    totals   = [g["s1"] + g["s2"] for g in h2h]
-    p1_wins  = sum(1 for g in h2h if g["winner"].lower() == p1.lower())
+    pp1, pp2  = _find(p1), _find(p2)
+    totals    = [g["s1"] + g["s2"] for g in h2h]
+    p1_scores = [g["s1"] for g in h2h]
+    p2_scores = [g["s2"] for g in h2h]
+    p1_wins   = sum(1 for g in h2h if g["winner"].lower() == p1.lower())
 
     sep   = "=" * 62
     lines = [sep, f"  MATCHUP ANALYSIS:  {p1}  vs  {p2}", sep]
@@ -584,6 +587,26 @@ def _matchup_text(p1: str, p2: str, days: int,
             if len(totals) > 1:
                 row += f"   Std dev: {statistics.stdev(totals):.1f}"
             lines.append(row)
+
+    # Score prediction bands
+    lines.append("\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
+    lines.append(f"  {'─'*58}")
+    lines.append(f"  {'':20} {'Mean':>6}  {'Std':>5}  {'Band':^20}  {'Conf':>5}")
+    for label, seq in [
+        ("Total  (both)",       totals),
+        (f"Home   ({p1[:14]})", p1_scores),
+        (f"Away   ({p2[:14]})", p2_scores),
+    ]:
+        band = _score_band(seq)
+        if band:
+            rng = f"[{band['low']:.1f} – {band['high']:.1f}]"
+            lines.append(
+                f"  {label:<20} {band['mean']:>6.1f}  {band['std']:>5.1f}  {rng:^20}  {band['confidence']:>4.0f}%"
+            )
+        else:
+            lines.append(
+                f"  {label:<20}  insufficient H2H data (n={len(seq)}) — increase Days"
+            )
 
     if pp1 and pp2:
         p1_ppm = pp1.get("pts_per_match")

@@ -282,6 +282,32 @@ def _filter_h2h(games: list[dict], p1: str, p2: str) -> list[dict]:
     return out
 
 
+def _score_band(scores: list[float], half_width: float = 0.5) -> dict | None:
+    """Compute a tight prediction band for *scores* and its empirical confidence.
+
+    Band = [mean - half_width*std, mean + half_width*std].  Confidence is the
+    fraction of historical values that actually landed inside that range, so it
+    is honest even for small or non-normal samples.
+
+    Returns None when fewer than 3 samples are available.
+    """
+    if len(scores) < 3:
+        return None
+    mean = statistics.mean(scores)
+    std  = statistics.stdev(scores)
+    low  = mean - half_width * std
+    high = mean + half_width * std
+    in_band = sum(1 for s in scores if low <= s <= high)
+    return {
+        "mean":       round(mean, 1),
+        "std":        round(std, 1),
+        "low":        round(low, 1),
+        "high":       round(high, 1),
+        "confidence": round(in_band / len(scores) * 100, 1),
+        "n":          len(scores),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Pretty-print table
 # --------------------------------------------------------------------------- #
@@ -432,18 +458,12 @@ def cmd_matchup(args: argparse.Namespace) -> None:
     def _find(name: str) -> dict | None:
         return next((p for p in players if p["name"].lower() == name.lower()), None)
 
-    def _h2h_stats() -> dict:
-        h2h = _filter_h2h(games, p1, p2)
-        totals = [g["s1"] + g["s2"] for g in h2h]
-        p1_wins = sum(1 for g in h2h if g["winner"].lower() == p1.lower())
-        return {
-            "n": len(h2h), "p1_wins": p1_wins, "p2_wins": len(h2h) - p1_wins,
-            "avg_total": statistics.mean(totals) if totals else None,
-            "std_total": statistics.stdev(totals) if len(totals) > 1 else None,
-        }
-
     pp1, pp2 = _find(p1), _find(p2)
-    h2h = _h2h_stats()
+    h2h_games = _filter_h2h(games, p1, p2)
+    totals    = [g["s1"] + g["s2"] for g in h2h_games]
+    p1_scores = [g["s1"] for g in h2h_games]
+    p2_scores = [g["s2"] for g in h2h_games]
+    p1_wins   = sum(1 for g in h2h_games if g["winner"].lower() == p1.lower())
 
     print(f"\n{'='*62}")
     print(f"  MATCHUP ANALYSIS:  {p1}  vs  {p2}")
@@ -462,14 +482,31 @@ def cmd_matchup(args: argparse.Namespace) -> None:
     _show("Player 1", pp1)
     _show("Player 2", pp2)
 
-    print(f"\n  Head-to-head (last {days}d): {h2h['n']} games")
-    if h2h["n"]:
-        print(f"    {p1}: {h2h['p1_wins']} wins   {p2}: {h2h['p2_wins']} wins")
-        if h2h["avg_total"] is not None:
-            line = f"    Avg total: {h2h['avg_total']:.1f}"
-            if h2h["std_total"] is not None:
-                line += f"   Std dev: {h2h['std_total']:.1f}"
+    n_h2h = len(h2h_games)
+    print(f"\n  Head-to-head (last {days}d): {n_h2h} games")
+    if n_h2h:
+        print(f"    {p1}: {p1_wins} wins   {p2}: {n_h2h - p1_wins} wins")
+        if totals:
+            line = f"    Avg total: {statistics.mean(totals):.1f}"
+            if len(totals) > 1:
+                line += f"   Std dev: {statistics.stdev(totals):.1f}"
             print(line)
+
+    # Score prediction bands
+    print("\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
+    print(f"  {'─'*58}")
+    print(f"  {'':20} {'Mean':>6}  {'Std':>5}  {'Band':^20}  {'Conf':>5}")
+    for label, seq in [
+        ("Total  (both)", totals),
+        (f"Home   ({p1[:14]})", p1_scores),
+        (f"Away   ({p2[:14]})", p2_scores),
+    ]:
+        band = _score_band(seq)
+        if band:
+            rng = f"[{band['low']:.1f} – {band['high']:.1f}]"
+            print(f"  {label:<20} {band['mean']:>6.1f}  {band['std']:>5.1f}  {rng:^20}  {band['confidence']:>4.0f}%")
+        else:
+            print(f"  {label:<20}  insufficient H2H data (n={len(seq)}) — try --days 90")
 
     # PPM-based expected total
     if pp1 and pp2:
@@ -477,10 +514,10 @@ def cmd_matchup(args: argparse.Namespace) -> None:
         p2_ppm = pp2.get("pts_per_match")
         if isinstance(p1_ppm, (int, float)) and isinstance(p2_ppm, (int, float)):
             exp = p1_ppm + p2_ppm
+            avg_t = statistics.mean(totals) if totals else None
             print(f"\n  Expected total (PPM model): {exp:.1f}")
-            if h2h["avg_total"] is not None:
-                diff = exp - h2h["avg_total"]
-                print(f"  vs H2H average:            {h2h['avg_total']:.1f}  (diff: {diff:+.1f})")
+            if avg_t is not None:
+                print(f"  vs H2H average:            {avg_t:.1f}  (diff: {exp - avg_t:+.1f})")
 
     # Win% edge
     if pp1 and pp2:
