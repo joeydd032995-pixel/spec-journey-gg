@@ -20,7 +20,7 @@ def get_cached(key: str, fetch_fn: Callable[[], Any], ttl: int | None = None) ->
             return entry["data"]
     data = fetch_fn()  # computed outside the lock to avoid blocking other keys
     with _lock:
-        _store[key] = {"data": data, "ts": now}
+        _store[key] = {"data": data, "ts": time.time()}
     return data
 
 

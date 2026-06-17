@@ -18,10 +18,10 @@ def _refresh_games() -> None:
         scraper.get_schedule()
         cache.invalidate("feed:")
         cache.invalidate("games:")
-        cache.invalidate("schedule")
+        cache.invalidate("schedule:")
         log.info("refreshed games/schedule")
-    except Exception as e:  # keep the scheduler alive
-        log.warning("games refresh failed: %s", e)
+    except Exception:  # keep the scheduler alive
+        log.exception("games refresh failed")
 
 
 def _refresh_players() -> None:
@@ -31,21 +31,23 @@ def _refresh_players() -> None:
         cache.invalidate("players:")
         cache.invalidate("standings")
         log.info("refreshed players/standings")
-    except Exception as e:
-        log.warning("players refresh failed: %s", e)
+    except Exception:
+        log.exception("players refresh failed")
 
 
 def _deep_archive() -> None:
     try:
         inserted = scraper.deep_archive(days=config.ARCHIVE_DAYS)
         log.info("deep_archive job complete: %d new rows", inserted)
-    except Exception as e:
-        log.warning("deep_archive failed: %s", e)
+    except Exception:
+        log.exception("deep_archive failed")
 
 
 def start() -> BackgroundScheduler | None:
     global _scheduler
-    if config.REFRESH_GAMES_MIN <= 0 and config.REFRESH_PLAYERS_MIN <= 0:
+    has_refresh = config.REFRESH_GAMES_MIN > 0 or config.REFRESH_PLAYERS_MIN > 0
+    has_archive = config.ARCHIVE_DAYS > 0
+    if not has_refresh and not has_archive:
         return None
     _scheduler = BackgroundScheduler(timezone="UTC")
     if config.REFRESH_GAMES_MIN > 0:
@@ -54,9 +56,10 @@ def start() -> BackgroundScheduler | None:
     if config.REFRESH_PLAYERS_MIN > 0:
         _scheduler.add_job(_refresh_players, "interval", minutes=config.REFRESH_PLAYERS_MIN,
                            id="players", max_instances=1, coalesce=True)
-    # Nightly deep archive at 02:00 UTC accumulates full history in game_history.
-    _scheduler.add_job(_deep_archive, "cron", hour=2, minute=0,
-                       id="deep_archive", max_instances=1, coalesce=True)
+    if has_archive:
+        # Nightly deep archive at 02:00 UTC accumulates full history in game_history.
+        _scheduler.add_job(_deep_archive, "cron", hour=2, minute=0,
+                           id="deep_archive", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("scheduler started (games=%dm players=%dm archive=%dd@02:00UTC)",
              config.REFRESH_GAMES_MIN, config.REFRESH_PLAYERS_MIN, config.ARCHIVE_DAYS)

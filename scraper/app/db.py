@@ -116,6 +116,18 @@ def head_to_head(p1: str, p2: str, limit: int = 20) -> dict:
     """All historical matchups between two players from game_history."""
     lp1, lp2 = p1.lower(), p2.lower()
     with _lock, _conn() as c:
+        # Aggregate over FULL history (no LIMIT) so stats are accurate.
+        agg = c.execute("""
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN (LOWER(player1)=? AND score1>score2)
+                             OR  (LOWER(player2)=? AND score2>score1)
+                            THEN 1 ELSE 0 END) AS p1_wins,
+                   AVG(CAST(total AS REAL)) AS avg_total
+            FROM game_history
+            WHERE (LOWER(player1)=? AND LOWER(player2)=?)
+               OR (LOWER(player1)=? AND LOWER(player2)=?)
+        """, (lp1, lp1, lp1, lp2, lp2, lp1)).fetchone()
+        # Recent detail list capped to `limit`.
         rows = c.execute("""
             SELECT id, game_date, hour_utc, player1, player2,
                    score1, score2, total, division
@@ -125,21 +137,13 @@ def head_to_head(p1: str, p2: str, limit: int = 20) -> dict:
             ORDER BY game_date DESC, COALESCE(hour_utc, 0) DESC
             LIMIT ?
         """, (lp1, lp2, lp2, lp1, limit)).fetchall()
-    games = [dict(r) for r in rows]
-    p1_wins = sum(
-        1 for g in games
-        if (g["player1"].lower() == lp1 and g["score1"] > g["score2"])
-        or (g["player2"].lower() == lp1 and g["score2"] > g["score1"])
-    )
-    p2_wins = sum(
-        1 for g in games
-        if (g["player1"].lower() == lp2 and g["score1"] > g["score2"])
-        or (g["player2"].lower() == lp2 and g["score2"] > g["score1"])
-    )
-    totals = [g["total"] for g in games if g["total"] is not None]
-    avg_total = round(sum(totals) / len(totals), 1) if totals else None
+    total = agg["total"] or 0
+    p1_wins = agg["p1_wins"] or 0
+    p2_wins = total - p1_wins
+    avg_total_raw = agg["avg_total"]
+    avg_total = round(avg_total_raw, 1) if avg_total_raw is not None else None
     recent = []
-    for g in games:
+    for g in [dict(r) for r in rows]:
         p1_scored_first = g["player1"].lower() == lp1
         p1_score = g["score1"] if p1_scored_first else g["score2"]
         p2_score = g["score2"] if p1_scored_first else g["score1"]
@@ -149,7 +153,6 @@ def head_to_head(p1: str, p2: str, limit: int = 20) -> dict:
             "total": g["total"], "division": g["division"],
             "winner": p1 if p1_score > p2_score else p2,
         })
-    total = len(games)
     return {
         "p1": p1, "p2": p2, "total": total,
         "p1_wins": p1_wins, "p2_wins": p2_wins,

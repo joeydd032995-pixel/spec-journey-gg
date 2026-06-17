@@ -89,7 +89,7 @@ def get_schedule(days: int = 2) -> list[dict]:
     finally:
         client.close()
     schedule = normalize.build_schedule(events)
-    db.save_snapshot("schedule", schedule)
+    db.save_snapshot(f"schedule:{days}", schedule)
     return schedule
 
 

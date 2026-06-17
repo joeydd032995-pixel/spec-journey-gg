@@ -26,16 +26,23 @@ function baseUrl(): string {
 }
 
 async function getJson(path: string): Promise<unknown> {
-  const res = await fetch(`${baseUrl()}${path}`, {
-    headers: { Accept: "application/json", "User-Agent": "GGBetAnalyzer/1.0" },
-    // Cache parity with the BetsAPI client.
-    next: { revalidate: 300 },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`H2HGGL service ${res.status} on ${path}: ${text.slice(0, 200)}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(`${baseUrl()}${path}`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json", "User-Agent": "GGBetAnalyzer/1.0" },
+      // Cache parity with the BetsAPI client.
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`H2HGGL service ${res.status} on ${path}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 /** Fetch the normalized feed for the last `days` days. */
