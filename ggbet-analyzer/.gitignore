@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# env — NEVER commit your token
+.env.local
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# Vercel
+.vercel
+
+# Python (if using offline scripts)
+__pycache__/
+*.pyc
+ggba_data/
+
+# build artifacts
+*.tsbuildinfo
+next-env.d.ts

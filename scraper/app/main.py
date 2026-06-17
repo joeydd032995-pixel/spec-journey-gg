@@ -1,0 +1,89 @@
+"""FastAPI service exposing free h2hggl.com data as a REST API.
+
+Endpoints serve cached/normalized data; the background scheduler keeps the
+SQLite store warm. If a live fetch fails, the last good DB snapshot is served.
+"""
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+
+from . import cache, config, db, scheduler, scraper
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("h2hggl.api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(title="H2H GG League Data API", version="1.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+
+def _served(key: str, fetch_fn, snapshot_key: str | None = None):
+    """Cache-first, then live fetch, then last-good DB snapshot on failure."""
+    try:
+        return cache.get_cached(key, fetch_fn)
+    except Exception as e:
+        log.warning("live fetch failed for %s: %s", key, e)
+        snap = db.load_snapshot(snapshot_key or key)
+        if snap is not None:
+            return snap
+        raise HTTPException(status_code=502, detail=f"source unavailable: {e}")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "sport": config.API_SPORT, "source": config.API_BASE}
+
+
+@app.get("/api/standings")
+def standings():
+    return _served("standings", scraper.get_standings)
+
+
+@app.get("/api/players")
+def players(minGp: int = Query(1, ge=1)):
+    return _served(f"players:{minGp}", lambda: scraper.get_players(min_gp=minGp), "players:1")
+
+
+@app.get("/api/players/{player_id}")
+def player(player_id: str, minGp: int = Query(1, ge=1)):
+    rows = _served(f"players:{minGp}", lambda: scraper.get_players(min_gp=minGp), "players:1")
+    pid = player_id.lower()
+    for r in rows:
+        if r["name"].lower() == pid:
+            return r
+    raise HTTPException(status_code=404, detail=f"player '{player_id}' not found")
+
+
+@app.get("/api/schedule")
+def schedule(days: int = Query(2, ge=1, le=14)):
+    return _served("schedule", lambda: scraper.get_schedule(days=days))
+
+
+@app.get("/api/games")
+def games(days: int = Query(config.DEFAULT_FEED_DAYS, ge=1, le=90)):
+    return _served(f"games:{days}", lambda: scraper.get_games(days=days), f"games:{days}")
+
+
+@app.get("/api/feed")
+def feed(days: int = Query(config.DEFAULT_FEED_DAYS, ge=1, le=90), minGp: int = Query(1, ge=1)):
+    """Bridge endpoint: { walkforward, players, matches, meta } for GGBetAnalyzer."""
+    return _served(f"feed:{days}:{minGp}",
+                   lambda: scraper.build_feed(days=days, min_gp=minGp),
+                   f"feed:{days}:{minGp}")

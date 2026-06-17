@@ -1,0 +1,17 @@
+services:
+  h2hggl-api:
+    build: .
+    container_name: h2hggl-api
+    ports:
+      - "8000:8000"
+    environment:
+      # See .env.example for all options.
+      H2HGGL_CORS_ORIGINS: "*"
+      H2HGGL_REFRESH_GAMES_MIN: "10"
+      H2HGGL_REFRESH_PLAYERS_MIN: "30"
+    volumes:
+      - h2hggl-data:/data
+    restart: unless-stopped
+
+volumes:
+  h2hggl-data:
