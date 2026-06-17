@@ -35,6 +35,7 @@ def build_feed(days: int = config.DEFAULT_FEED_DAYS, min_gp: int = 1) -> dict:
 
     db.upsert_players(players)
     db.upsert_games(games)
+    db.archive_games(games)
 
     feed = {
         "walkforward": walkforward,
@@ -100,9 +101,24 @@ def get_games(days: int = config.DEFAULT_FEED_DAYS) -> list[dict]:
         client.close()
     games = normalize.ended_games(events)
     db.upsert_games(games)
+    db.archive_games(games)
     matches = normalize.build_matches(games)
     db.save_snapshot(f"games:{days}", matches)
     return matches
+
+
+def deep_archive(days: int = config.ARCHIVE_DAYS) -> int:
+    """Fetch a long date window and archive all completed games into game_history.
+    Returns the count of newly inserted rows (skips already-archived games)."""
+    client = H2HGGLClient()
+    try:
+        events = client.schedule_range(days)
+    finally:
+        client.close()
+    games = normalize.ended_games(events)
+    inserted = db.archive_games(games)
+    log.info("deep_archive: %d new rows from %d games over %d days", inserted, len(games), days)
+    return inserted
 
 
 def _now() -> str:

@@ -45,5 +45,8 @@ REFRESH_GAMES_MIN = _int("H2HGGL_REFRESH_GAMES_MIN", 10)
 REFRESH_PLAYERS_MIN = _int("H2HGGL_REFRESH_PLAYERS_MIN", 30)
 DEFAULT_FEED_DAYS = _int("H2HGGL_FEED_DAYS", 14)
 
+# Deep archive: fetches this many days of history once per day to back-fill game_history.
+ARCHIVE_DAYS = _int("H2HGGL_ARCHIVE_DAYS", 90)
+
 # CORS — comma-separated list of allowed origins for the frontend.
 CORS_ORIGINS = [o.strip() for o in os.environ.get("H2HGGL_CORS_ORIGINS", "*").split(",") if o.strip()]

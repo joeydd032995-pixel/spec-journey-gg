@@ -87,3 +87,26 @@ def feed(days: int = Query(config.DEFAULT_FEED_DAYS, ge=1, le=90), minGp: int = 
     return _served(f"feed:{days}:{minGp}",
                    lambda: scraper.build_feed(days=days, min_gp=minGp),
                    f"feed:{days}:{minGp}")
+
+
+@app.get("/api/h2h")
+def h2h(p1: str = Query(..., description="First player name"),
+        p2: str = Query(..., description="Second player name"),
+        limit: int = Query(20, ge=1, le=200)):
+    """Head-to-head record between two players drawn from the permanent game_history archive."""
+    result = db.head_to_head(p1, p2, limit=limit)
+    if result["total"] == 0:
+        # Trigger a fresh archive pass so first-time callers get data without waiting
+        try:
+            scraper.deep_archive(days=config.DEFAULT_FEED_DAYS)
+            result = db.head_to_head(p1, p2, limit=limit)
+        except Exception as e:
+            log.warning("h2h on-demand archive failed: %s", e)
+    return result
+
+
+@app.get("/api/history")
+def history(limit: int = Query(200, ge=1, le=1000)):
+    """Recent rows from the permanent game_history archive."""
+    rows = db.history_games(limit=limit)
+    return {"count": len(rows), "games": rows}
