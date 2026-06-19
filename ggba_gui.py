@@ -538,7 +538,7 @@ class App:
             # the rest of the codebase (p1, p2, date, hour_utc, status, division).
             games = [g for ev in raw if (g := _parse_game(ev)) is not None]
             upcoming = [g for g in games if g.get("status", "") != "MATCH_ENDED"]
-            upcoming.sort(key=lambda g: (g.get("date", ""), g.get("hour_utc", 0)))
+            upcoming.sort(key=lambda g: g.get("ts", 0))
             return upcoming
 
         def done(fixtures: list[dict]) -> None:
@@ -551,9 +551,10 @@ class App:
         self._sched_tree.delete(*self._sched_tree.get_children())
         self._sched_fixtures.clear()
         for f in fixtures:
-            hour = f.get("hour_utc", 0)
+            ts = f.get("ts", 0)
             try:
-                time_str = f"{int(hour):02d}:00"
+                t = int(ts)
+                time_str = f"{(t % 86400) // 3600:02d}:{(t % 3600) // 60:02d}"
             except (TypeError, ValueError):
                 time_str = "--:--"
             iid = self._sched_tree.insert("", "end", values=(
