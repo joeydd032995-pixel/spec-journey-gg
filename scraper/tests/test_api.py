@@ -69,9 +69,13 @@ def upcoming_client(monkeypatch, tmp_path):
     # Upcoming events returned per day (not MATCH_ENDED).
     upcoming_events = load("schedule_upcoming.json")
 
+    def _schedule_day(_self, day):
+        day_key = day.strftime("%Y-%m-%d")
+        return [e for e in upcoming_events if str(e.get("startDate", "")).startswith(day_key)]
+
     monkeypatch.setattr(_client.H2HGGLClient, "participants", lambda self: parts)
     monkeypatch.setattr(_client.H2HGGLClient, "schedule_range", lambda self, days: history_events)
-    monkeypatch.setattr(_client.H2HGGLClient, "schedule_day", lambda self, day: upcoming_events)
+    monkeypatch.setattr(_client.H2HGGLClient, "schedule_day", _schedule_day)
     monkeypatch.setattr(_client.H2HGGLClient, "close", lambda self: None)
 
     with TestClient(main.app) as c:

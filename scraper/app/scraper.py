@@ -8,7 +8,7 @@ and only imported on demand so the service runs without a browser installed.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import config, db, normalize
 from .client import H2HGGLClient
@@ -173,7 +173,7 @@ def build_upcoming_feed(days_schedule: int = 2, days_history: int = 60) -> dict:
         p2_card = _player_card(p2_stats_raw)
 
         # 3. Head-to-head history filtered to the requested history window.
-        since = (date.today() - timedelta(days=days_history)).isoformat()
+        since = (datetime.now(timezone.utc).date() - timedelta(days=days_history)).isoformat()
         h2h = db.head_to_head(p1_name, p2_name, limit=50, since_date=since)
 
         # 4. Extract score series from H2H recent list.
