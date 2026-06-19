@@ -32,11 +32,11 @@ const C = {
 
 /* ----------------------------- math core --------------------------------- */
 // All model math is pure + documented so it can be lifted into a Python module.
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-const r1 = (x) => Math.round(x * 10) / 10;
+const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+const r1 = (x: number) => Math.round(x * 10) / 10;
 // Pearson correlation of two equal-length arrays (null if degenerate)
-function pearson(a, b) {
+function pearson(a: number[], b: number[]) {
   const n = a.length; if (n < 2) return null;
   let ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; } ma /= n; mb /= n;
   let sab = 0, sa = 0, sb = 0;
@@ -45,16 +45,16 @@ function pearson(a, b) {
 }
 
 // erf (Abramowitz & Stegun 7.1.26) — verified to ~1e-7 vs scipy.
-function erf(x) {
+function erf(x: number) {
   const s = x < 0 ? -1 : 1; x = Math.abs(x);
   const t = 1 / (1 + 0.3275911 * x);
   const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
   return s * y;
 }
-const normCdf = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
+const normCdf = (z: number) => 0.5 * (1 + erf(z / Math.SQRT2));
 
 // recent_form "WWLWL" -> weighted score in [-1,+1] (leftmost = most recent).
-function formScore(formStr) {
+function formScore(formStr: string) {
   const ch = String(formStr || "").toUpperCase().replace(/[^WL]/g, "").split("");
   if (!ch.length) return 0;
   let num_ = 0, den = 0;
@@ -63,39 +63,41 @@ function formScore(formStr) {
 }
 
 // efficiency metric = pts_per_match + steals - fouls*0.5
-const efficiency = (p) => num(p.pts_per_match) + num(p.steals) - num(p.fouls) * 0.5;
+const efficiency = (p: Record<string, unknown>) => num(p.pts_per_match) + num(p.steals) - num(p.fouls) * 0.5;
 
 // American odds helpers
-const impliedProb = (o) => { o = num(o); if (!o) return null; return o > 0 ? 100 / (o + 100) : -o / (-o + 100); };
-const payoutMult = (o) => { o = num(o); if (!o) return 0; return o > 0 ? o / 100 : 100 / -o; };
-const evPerUnit = (p, o) => p * payoutMult(o) - (1 - p);          // expected profit per 1u stake
-const fullKelly = (p, o) => { const b = payoutMult(o); if (b <= 0) return 0; return (b * p - (1 - p)) / b; };
-const decimalOdds = (o) => payoutMult(o) + 1;
-const americanStr = (o) => { o = num(o); return o > 0 ? `+${o}` : `${o}`; };
+const impliedProb = (o: unknown) => { const ov = num(o); if (!ov) return null; return ov > 0 ? 100 / (ov + 100) : -ov / (-ov + 100); };
+const payoutMult = (o: unknown) => { const ov = num(o); if (!ov) return 0; return ov > 0 ? ov / 100 : 100 / -ov; };
+const evPerUnit = (p: number, o: unknown) => p * payoutMult(o) - (1 - p);
+const fullKelly = (p: number, o: unknown) => { const b = payoutMult(o); if (b <= 0) return 0; return (b * p - (1 - p)) / b; };
+const decimalOdds = (o: unknown) => payoutMult(o) + 1;
+const americanStr = (o: unknown) => { const ov = num(o); return ov > 0 ? `+${ov}` : `${ov}`; };
 
 // --- de-vig + line shopping + CLV (mirrors ggba_model.py, unit-tested) ---
 // No-vig fair prob of `side` from a two-sided American market (proportional method).
-function devigTwoWay(oSide, oOther) {
+function devigTwoWay(oSide: unknown, oOther: unknown) {
   const q1 = impliedProb(oSide), q2 = impliedProb(oOther);
   if (q1 == null || q2 == null || q1 + q2 <= 0) return [null, null];
   const s = q1 + q2; return [q1 / s, q2 / s];
 }
 // CLV as EV measured at the closing FAIR prob. Two-sided close -> devigged first.
 // >0 means you beat the close (the durable +EV proxy in efficient markets).
-function clvEv(oTaken, oCloseSide, oCloseOther) {
-  let pClose;
-  if (oCloseOther !== undefined && oCloseOther !== null && oCloseOther !== "") [pClose] = devigTwoWay(oCloseSide, oCloseOther);
+function clvEv(oTaken: unknown, oCloseSide: unknown, oCloseOther?: unknown) {
+  let pClose: number | null;
+  if (oCloseOther !== undefined && oCloseOther !== null && oCloseOther !== "") [pClose] = devigTwoWay(oCloseSide, oCloseOther) as [number | null, number | null];
   else pClose = impliedProb(oCloseSide);
   if (pClose == null) return null;
   return pClose * decimalOdds(oTaken) - 1;
 }
 // Best available price each side across books + no-vig market consensus over-prob.
-function bestPrice(quotes) {
-  let bestOver = null, bestUnder = null; const cons = [];
+function bestPrice(quotes: Array<{ over: unknown; under: unknown; book: string }>) {
+  let bestOver: { d: number; o: number; book: string } | null = null;
+  let bestUnder: { d: number; o: number; book: string } | null = null;
+  const cons: number[] = [];
   quotes.forEach((q) => {
     if (q.over !== "" && q.over != null) { const d = decimalOdds(q.over); if (!bestOver || d > bestOver.d) bestOver = { d, o: num(q.over), book: q.book }; }
     if (q.under !== "" && q.under != null) { const d = decimalOdds(q.under); if (!bestUnder || d > bestUnder.d) bestUnder = { d, o: num(q.under), book: q.book }; }
-    if (q.over !== "" && q.over != null && q.under !== "" && q.under != null) { const [pv] = devigTwoWay(q.over, q.under); if (pv != null) cons.push(pv); }
+    if (q.over !== "" && q.over != null && q.under !== "" && q.under != null) { const [pv] = devigTwoWay(q.over, q.under); if (pv != null) cons.push(pv as number); }
   });
   return { bestOver, bestUnder, consensusOver: cons.length ? cons.reduce((a, b) => a + b, 0) / cons.length : null };
 }
@@ -113,32 +115,32 @@ function bestPrice(quotes) {
    strongest at low gp and fades smoothly to the raw value as games accumulate —
    no hard cutoff, so no discontinuity. In the walk-forward backtest the target is
    a running league mean built only from prior games, so this adds NO leakage. */
-function shrink(raw, gp, k, target) {
+function shrink(raw: number, gp: number, k: number, target: number | null) {
   if (!(k > 0) || target == null || !Number.isFinite(target) || gp <= 0) return raw;
   const w = gp / (gp + k);
   return w * raw + (1 - w) * target;
 }
 
 // gp-weighted league mean ppm = total points / total player-games (live/roster target)
-function leagueMeanPpm(players) {
+function leagueMeanPpm(players: unknown[]) {
   let pts = 0, gp = 0;
-  (players || []).forEach((p) => { const g = num(p.gp), m = num(p.pts_per_match); if (g > 0 && m > 0) { pts += g * m; gp += g; } });
+  (players || []).forEach((p) => { const g = num((p as Record<string, unknown>).gp), m = num((p as Record<string, unknown>).pts_per_match); if (g > 0 && m > 0) { pts += g * m; gp += g; } });
   return gp > 0 ? pts / gp : null;
 }
 
-function projectTotal(p1, p2, s, lateNight, ctx) {
+function projectTotal(p1: Record<string, unknown>, p2: Record<string, unknown>, s: Record<string, unknown>, lateNight: boolean, ctx: Record<string, unknown> | null) {
   if (!p1 || !p2) return null;
   const k = num(s.shrinkK);
   const lg = ctx && ctx.leagueMean != null && Number.isFinite(Number(ctx.leagueMean)) ? Number(ctx.leagueMean) : null;
   const pm1 = shrink(num(p1.pts_per_match), num(p1.gp), k, lg);   // ppm -> league mean (target supplied per-context)
   const pm2 = shrink(num(p2.pts_per_match), num(p2.gp), k, lg);
   const base = pm1 + pm2;
-  const f1 = formScore(p1.recent_form), f2 = formScore(p2.recent_form);
-  const form_adj = 1 + s.formCoef * ((f1 + f2) / 2);
+  const f1 = formScore(String(p1.recent_form ?? "")), f2 = formScore(String(p2.recent_form ?? ""));
+  const form_adj = 1 + num(s.formCoef) * ((f1 + f2) / 2);
   const defLoad = ((num(p1.steals) + num(p1.fouls)) + (num(p2.steals) + num(p2.fouls))) / 2;
-  const matchup_adj = clamp(1 - s.matchupCoef * (defLoad / 10), 0.85, 1.05);
-  const fatigue_adj = lateNight ? s.fatigue : 1.0;
-  const projected = r1(base * form_adj * matchup_adj * fatigue_adj * s.variance);
+  const matchup_adj = clamp(1 - num(s.matchupCoef) * (defLoad / 10), 0.85, 1.05);
+  const fatigue_adj = lateNight ? num(s.fatigue) : 1.0;
+  const projected = r1(base * form_adj * matchup_adj * fatigue_adj * num(s.variance));
 
   const w1 = shrink(num(p1.win_pct), num(p1.gp), k, 50);          // win% -> 50 (league win% is 50 by definition)
   const w2 = shrink(num(p2.win_pct), num(p2.gp), k, 50);
@@ -146,7 +148,7 @@ function projectTotal(p1, p2, s, lateNight, ctx) {
   const p1_proj = r1(projected * (w1 / wsum));
   const p2_proj = r1(projected - p1_proj);
 
-  const sigma = Math.sqrt(Math.max(projected, 1) * s.dispersion);
+  const sigma = Math.sqrt(Math.max(projected, 1) * num(s.dispersion));
   const minGp = Math.min(num(p1.gp), num(p2.gp));
   const confidence = minGp > 50 ? "High" : minGp > 20 ? "Med" : "Low";
 
@@ -155,7 +157,7 @@ function projectTotal(p1, p2, s, lateNight, ctx) {
 }
 
 // P(total > line) with 0.5 continuity correction for integer lines
-function probOver(projected, sigma, line) {
+function probOver(projected: number, sigma: number, line: unknown) {
   const L = Number(line);
   if (!Number.isFinite(L) || sigma <= 0) return null;
   const isInt = Math.abs(L - Math.round(L)) < 1e-9;
@@ -167,12 +169,12 @@ function probOver(projected, sigma, line) {
    wp = p1.win_pct/(p1.win_pct+p2.win_pct)
    adjusted = wp + 5*form_diff - 3*h2h_penalty   (clamped 5–95%)
    win% is shrunk toward 50 below the sample cutoff when settings provided. */
-function winProb(p1, p2, h2hPenalty = 0, s = null) {
+function winProb(p1: Record<string, unknown>, p2: Record<string, unknown>, h2hPenalty = 0, s: Record<string, unknown> | null = null) {
   const k = s ? num(s.shrinkK) : 0;
   const w1 = shrink(num(p1.win_pct), num(p1.gp), k, 50);
   const w2 = shrink(num(p2.win_pct), num(p2.gp), k, 50);
   const baseWp = (w1 / (w1 + w2 || 1)) * 100;
-  const formDiff = formScore(p1.recent_form) - formScore(p2.recent_form);
+  const formDiff = formScore(String(p1.recent_form ?? "")) - formScore(String(p2.recent_form ?? ""));
   const adj = clamp(baseWp + 5 * formDiff - 3 * h2hPenalty, 5, 95);
   return { baseWp, formDiff, adjusted: adj };
 }
@@ -193,24 +195,24 @@ function winProb(p1, p2, h2hPenalty = 0, s = null) {
    only. This single estimator subsumes opponent adjustment, team-skin effects,
    and scoring-form (recent games move the ratings).
    ========================================================================== */
-function makeRatings(params) {
+function makeRatings(params: Record<string, unknown> | null) {
   const etaP = num(params?.etaP) || 0.08;
   const etaT = num(params?.etaT) || 0.04;
   const decay = num(params?.ratingDecay) || 0;
-  const oP = {}, dP = {}, oT = {}, dT = {};
+  const oP: Record<string, number> = {}, dP: Record<string, number> = {}, oT: Record<string, number> = {}, dT: Record<string, number> = {};
   let mPts = 0, mN = 0;
-  const g = (o, k) => o[k] || 0;
+  const g = (o: Record<string, number>, k: string) => o[k] || 0;
   const mean = () => (mN > 0 ? mPts / mN : null);
   return {
     leagueMean: mean,
-    seen: (p) => (p in oP),
-    predict(A, TA, B, TB) {
+    seen: (p: string) => (p in oP),
+    predict(A: string, TA: string, B: string, TB: string) {
       const m = mN > 0 ? mPts / mN : 0;
       const sA = m + g(oP, A) + g(oT, TA) + g(dP, B) + g(dT, TB);
       const sB = m + g(oP, B) + g(oT, TB) + g(dP, A) + g(dT, TA);
       return { sA, sB, total: sA + sB, m };
     },
-    update(A, TA, B, TB, aA, aB) {
+    update(A: string, TA: string, B: string, TB: string, aA: number, aB: number) {
       const pr = this.predict(A, TA, B, TB);
       const rA = aA - pr.sA, rB = aB - pr.sB;
       oP[A] = g(oP, A) + etaP * rA; oT[TA] = g(oT, TA) + etaT * rA; dP[B] = g(dP, B) + etaP * rA; dT[TB] = g(dT, TB) + etaT * rA;
@@ -221,42 +223,43 @@ function makeRatings(params) {
       }
       mPts += aA + aB; mN += 2;
     },
-    ratingOf(p) { return { off: g(oP, p), def: g(dP, p) }; },
-    teamRatingOf(t) { return { off: g(oT, t), def: g(dT, t) }; },
+    ratingOf(p: string) { return { off: g(oP, p), def: g(dP, p) }; },
+    teamRatingOf(t: string) { return { off: g(oT, t), def: g(dT, t) }; },
   };
 }
 
 // Train a rating model over chronologically-sorted games (each: {p1,t1,p2,t2,s1,s2}).
 // Returns the trained estimator (final ratings, for live projection).
-function buildRatingsModel(games, params) {
+function buildRatingsModel(games: Array<Record<string, unknown>>, params: Record<string, unknown> | null) {
   const R = makeRatings(params);
-  games.forEach((g) => R.update(g.p1, g.t1, g.p2, g.t2, num(g.s1), num(g.s2)));
+  games.forEach((g) => R.update(String(g.p1), String(g.t1 ?? ""), String(g.p2), String(g.t2 ?? ""), num(g.s1), num(g.s2)));
   return R;
 }
 
 // Unified projection: routes to the rating model when selected + both players are known,
 // else the baseline ppm projector. Returns the SAME shape so the UI is model-agnostic.
-function computeProjection(p1, p2, s, lateNight, ctx) {
+function computeProjection(p1: Record<string, unknown>, p2: Record<string, unknown>, s: Record<string, unknown>, lateNight: boolean, ctx: Record<string, unknown> | null) {
   if (!p1 || !p2) return null;
-  if (s.modelMode === "rated" && ctx?.ratings?.seen(p1.name) && ctx.ratings.seen(p2.name)) {
-    const pred = ctx.ratings.predict(p1.name, ctx.team1 || "", p2.name, ctx.team2 || "");
+  const sCtx = ctx as (Record<string, unknown> & { ratings?: { seen: (n: string) => boolean; predict: (a: string, ta: string, b: string, tb: string) => { total: number; sA: number; sB: number } } }) | null;
+  if (s.modelMode === "rated" && sCtx?.ratings?.seen(String(p1.name)) && sCtx.ratings.seen(String(p2.name))) {
+    const pred = sCtx.ratings.predict(String(p1.name), String(sCtx.team1 || ""), String(p2.name), String(sCtx.team2 || ""));
     const projected = r1(pred.total);
-    const sigma = Math.sqrt(Math.max(projected, 1) * s.dispersion);
+    const sigma = Math.sqrt(Math.max(projected, 1) * num(s.dispersion));
     const minGp = Math.min(num(p1.gp), num(p2.gp));
     return { projected, p1_proj: r1(pred.sA), p2_proj: r1(pred.sB), sigma, rated: true,
       confidence: minGp > 50 ? "High" : minGp > 20 ? "Med" : "Low", minGp,
       base: projected, form_adj: 1, matchup_adj: 1, fatigue_adj: 1,
-      f1: formScore(p1.recent_form), f2: formScore(p2.recent_form) };
+      f1: formScore(String(p1.recent_form ?? "")), f2: formScore(String(p2.recent_form ?? "")) };
   }
   return projectTotal(p1, p2, s, lateNight, ctx);
 }
 
 // Empirical margin/total σ ratio from games (independent scores -> 1.0; correlated -> <1).
-function marginRatioFrom(games) {
+function marginRatioFrom(games: unknown[]) {
   if (!games || games.length < 12) return 1.0;
-  const tot = [], mar = [];
-  games.forEach((g) => { tot.push(num(g.s1) + num(g.s2)); mar.push(num(g.s1) - num(g.s2)); });
-  const sd = (a) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
+  const tot: number[] = [], mar: number[] = [];
+  games.forEach((g) => { const gv = g as Record<string, unknown>; tot.push(num(gv.s1) + num(gv.s2)); mar.push(num(gv.s1) - num(gv.s2)); });
+  const sd = (a: number[]) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
   const st = sd(tot), sm = sd(mar);
   return st > 0 ? clamp(sm / st, 0.5, 1.6) : 1.0;
 }
@@ -293,11 +296,11 @@ interface ScoreBand {
   confidence: number; n: number;
 }
 interface UpcomingGame {
-  external_id: string; date: string; hour_utc: number;
+  external_id: string; date: string; hour_utc: number; minute_utc?: number;
   player1: string; player2: string;
   p1_team: string; p2_team: string; division: string;
-  p1_stats: { win_pct: number; pts_per_match: number; gp: number; recent_form: string } | null;
-  p2_stats: { win_pct: number; pts_per_match: number; gp: number; recent_form: string } | null;
+  p1_stats: { win_pct: number | null; pts_per_match: number | null; gp: number; recent_form: string } | null;
+  p2_stats: { win_pct: number | null; pts_per_match: number | null; gp: number; recent_form: string } | null;
   h2h: { total_games: number; p1_wins: number; p2_wins: number; avg_total: number | null; recent: Record<string, unknown>[] } | null;
   analysis: {
     score_bands: { total: ScoreBand | null; p1: ScoreBand | null; p2: ScoreBand | null } | null;
@@ -320,7 +323,7 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 const Badge = ({ tone = "muted", children }: { tone?: string; children?: React.ReactNode }) => {
-  const map = { pos: [C.pos, "#0c2a1d"], neg: [C.neg, "#2e1210"], amber: [C.amber, "#2c2310"],
+  const map: Record<string, string[]> = { pos: [C.pos, "#0c2a1d"], neg: [C.neg, "#2e1210"], amber: [C.amber, "#2c2310"],
     blue: [C.blue, "#0f2334"], muted: [C.muted, C.surface2] };
   const [fg, bg] = map[tone] || map.muted;
   return <span style={{ color: fg, background: bg, border: `1px solid ${fg}33`, padding: "2px 9px",
@@ -330,7 +333,7 @@ const Badge = ({ tone = "muted", children }: { tone?: string; children?: React.R
 const selStyle = { width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`,
   borderRadius: 9, color: C.text, padding: "9px 10px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" };
 
-const Field = ({ label, value, onChange, type = "text", placeholder, step, mono = true, width }) => (
+const Field = ({ label, value, onChange, type = "text", placeholder, step, mono = true, width }: { label?: string; value?: string | number; onChange: (v: string) => void; type?: string; placeholder?: string; step?: string | number; mono?: boolean; width?: string | number }) => (
   <div style={{ width }}>
     {label && <Label>{label}</Label>}
     <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} type={type} step={step} placeholder={placeholder}
@@ -343,7 +346,7 @@ const Field = ({ label, value, onChange, type = "text", placeholder, step, mono 
 );
 
 const Btn = ({ children, onClick, kind = "ghost", disabled, style }: { children?: React.ReactNode; onClick?: () => void; kind?: string; disabled?: boolean; style?: React.CSSProperties }) => {
-  const kinds = {
+  const kinds: Record<string, React.CSSProperties> = {
     primary: { background: C.accent, color: "#04130c", border: `1px solid ${C.accent}`, fontWeight: 800 },
     ghost: { background: "transparent", color: C.text, border: `1px solid ${C.borderHi}` },
     danger: { background: "transparent", color: C.neg, border: `1px solid ${C.neg}55` },
@@ -385,7 +388,7 @@ export default function GGBetAnalyzer() {
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
   const [wf, setWf] = useState([]);
-  const [bets, setBets] = useState([]);
+  const [bets, setBets] = useState<Record<string, unknown>[]>([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
   const [lateNight, setLateNight] = useState(false);
@@ -525,7 +528,7 @@ export default function GGBetAnalyzer() {
             wf={wf} setWf={setWf} settings={settings} setSettings={setSettings} />
         ) : tab === "analyze" ? (
           <Analyzer players={players} settings={settings} lateNight={lateNight} matches={matches} wf={wf}
-            onLog={(b) => setBets((p) => [b, ...p])} />
+            onLog={(b: Record<string, unknown>) => setBets((p) => [b, ...p])} />
         ) : tab === "upcoming" ? (
           <UpcomingGamesFeed upcoming={upcoming} loading={upcomingLoading} error={upcomingError} onRefresh={fetchUpcomingFeed} />
         ) : tab === "log" ? (
@@ -2107,7 +2110,8 @@ function UpcomingGameCard({ game }: { game: UpcomingGame }) {
   const toggle = (section: "h2h" | "analysis") =>
     setExpanded((prev) => (prev === section ? null : section));
 
-  const timeStr = `${game.date}  ${String(game.hour_utc).padStart(2, "0")}:00 UTC`;
+  const mm = String(game.minute_utc ?? 0).padStart(2, "0");
+  const timeStr = `${game.date}  ${String(game.hour_utc).padStart(2, "0")}:${mm} UTC`;
   const edge = game.analysis?.win_edge;
   const bands = game.analysis?.score_bands;
   const ppm = game.analysis?.ppm_model;
@@ -2157,13 +2161,13 @@ function UpcomingGameCard({ game }: { game: UpcomingGame }) {
                   <div>
                     <div style={{ fontSize: 11, color: C.muted }}>Win%</div>
                     <div style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: C.text }}>
-                      {stats.win_pct.toFixed(1)}%
+                      {stats.win_pct != null ? `${(+stats.win_pct).toFixed(1)}%` : "—"}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: C.muted }}>PPM</div>
                     <div style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: C.accent }}>
-                      {stats.pts_per_match.toFixed(1)}
+                      {stats.pts_per_match != null ? (+stats.pts_per_match).toFixed(1) : "—"}
                     </div>
                   </div>
                   <div>
