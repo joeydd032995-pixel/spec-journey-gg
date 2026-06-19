@@ -844,9 +844,12 @@ def _matchup_text(p1: str, p2: str, days: int,
         wp1 = pp1.get("win_pct")
         wp2 = pp2.get("win_pct")
         if isinstance(wp1, (int, float)) and isinstance(wp2, (int, float)):
-            edge    = abs(wp1 - wp2)
-            favored = p1 if wp1 > wp2 else p2
-            lines.append(f"\n  Win%-based edge: {favored} favored (+{edge:.1f}%)")
+            edge = abs(wp1 - wp2)
+            if wp1 == wp2:
+                lines.append(f"\n  Win%-based edge: EVEN (+0.0%)")
+            else:
+                favored = p1 if wp1 > wp2 else p2
+                lines.append(f"\n  Win%-based edge: {favored} favored (+{edge:.1f}%)")
 
         f1_wins = pp1.get("recent_form", "").count("W")
         f2_wins = pp2.get("recent_form", "").count("W")
