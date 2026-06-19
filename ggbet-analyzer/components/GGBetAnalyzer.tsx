@@ -9,6 +9,7 @@ import {
   Database, Crosshair, ClipboardList, LineChart as LineIcon, Bot, Upload, Plus,
   Download, Trash2, RefreshCw, Send, AlertTriangle, TrendingUp, Activity, Moon, Sun,
   Edit3, X, Check, Target, Percent, DollarSign, Gauge, Search,
+  Calendar, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 /* ============================================================================
@@ -286,20 +287,39 @@ const DEFAULT_SETTINGS = { formCoef: 0.10, matchupCoef: 0.05, fatigue: 0.92, var
   modelMode: "rated", etaP: 0.08, etaT: 0.04, ratingDecay: 0 };
 const CSV_COLS = ["name","win_pct","pts_per_match","fg_pct","steals","fouls","gp","w","l","recent_form","nba_team"];
 
+/* ----------------------------- upcoming types ---------------------------- */
+interface ScoreBand {
+  mean: number; std: number; low: number; high: number;
+  confidence: number; n: number;
+}
+interface UpcomingGame {
+  external_id: string; date: string; hour_utc: number;
+  player1: string; player2: string;
+  p1_team: string; p2_team: string; division: string;
+  p1_stats: { win_pct: number; pts_per_match: number; gp: number; recent_form: string } | null;
+  p2_stats: { win_pct: number; pts_per_match: number; gp: number; recent_form: string } | null;
+  h2h: { total_games: number; p1_wins: number; p2_wins: number; avg_total: number | null; recent: Record<string, unknown>[] } | null;
+  analysis: {
+    score_bands: { total: ScoreBand | null; p1: ScoreBand | null; p2: ScoreBand | null } | null;
+    ppm_model: { total: number; p1: number; p2: number; vs_h2h_diff: number | null } | null;
+    win_edge: { favored: string; edge_pct: number } | null;
+  } | null;
+}
+
 /* ============================================================================
    ATOMS
    ========================================================================== */
-const Card = ({ children, style, glow }) => (
+const Card = ({ children, style, glow }: { children?: React.ReactNode; style?: React.CSSProperties; glow?: boolean }) => (
   <div style={{ background: C.surface, border: `1px solid ${glow ? C.accentDim : C.border}`,
     borderRadius: 14, padding: 18, boxShadow: glow ? `0 0 0 1px ${C.accentDim}, 0 8px 30px -18px ${C.accent}` : "0 8px 24px -20px #000",
     ...style }}>{children}</div>
 );
 
-const Label = ({ children }) => (
+const Label = ({ children }: { children?: React.ReactNode }) => (
   <div style={{ fontSize: 10.5, letterSpacing: 1.4, textTransform: "uppercase", color: C.muted, fontWeight: 700, marginBottom: 6 }}>{children}</div>
 );
 
-const Badge = ({ tone = "muted", children }) => {
+const Badge = ({ tone = "muted", children }: { tone?: string; children?: React.ReactNode }) => {
   const map = { pos: [C.pos, "#0c2a1d"], neg: [C.neg, "#2e1210"], amber: [C.amber, "#2c2310"],
     blue: [C.blue, "#0f2334"], muted: [C.muted, C.surface2] };
   const [fg, bg] = map[tone] || map.muted;
@@ -322,7 +342,7 @@ const Field = ({ label, value, onChange, type = "text", placeholder, step, mono 
   </div>
 );
 
-const Btn = ({ children, onClick, kind = "ghost", disabled, style }) => {
+const Btn = ({ children, onClick, kind = "ghost", disabled, style }: { children?: React.ReactNode; onClick?: () => void; kind?: string; disabled?: boolean; style?: React.CSSProperties }) => {
   const kinds = {
     primary: { background: C.accent, color: "#04130c", border: `1px solid ${C.accent}`, fontWeight: 800 },
     ghost: { background: "transparent", color: C.text, border: `1px solid ${C.borderHi}` },
@@ -340,7 +360,7 @@ const Btn = ({ children, onClick, kind = "ghost", disabled, style }) => {
   );
 };
 
-const Stat = ({ label, value, sub, tone }) => (
+const Stat = ({ label, value, sub, tone }: { label?: React.ReactNode; value?: React.ReactNode; sub?: React.ReactNode; tone?: string }) => (
   <div style={{ flex: "1 1 0", minWidth: 110 }}>
     <Label>{label}</Label>
     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 26, fontWeight: 700,
@@ -349,7 +369,7 @@ const Stat = ({ label, value, sub, tone }) => (
   </div>
 );
 
-const Empty = ({ icon, title, body }) => (
+const Empty = ({ icon, title, body }: { icon?: React.ReactNode; title?: React.ReactNode; body?: React.ReactNode }) => (
   <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted }}>
     <div style={{ display: "inline-flex", padding: 16, borderRadius: 14, background: C.surface2, border: `1px solid ${C.border}`, marginBottom: 14 }}>{icon}</div>
     <div style={{ fontSize: 16, color: C.text, fontWeight: 700, marginBottom: 6 }}>{title}</div>
@@ -370,6 +390,9 @@ export default function GGBetAnalyzer() {
   const [loaded, setLoaded] = useState(false);
   const [lateNight, setLateNight] = useState(false);
   const [clock, setClock] = useState(new Date());
+  const [upcoming, setUpcoming] = useState<UpcomingGame[]>([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+  const [upcomingError, setUpcomingError] = useState<string | null>(null);
 
   // hydrate
   useEffect(() => {
@@ -393,9 +416,35 @@ export default function GGBetAnalyzer() {
   // clock
   useEffect(() => { const t = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(t); }, []);
 
+  // upcoming fetch — uses a generation counter so stale in-flight responses are discarded
+  const upcomingGenRef = React.useRef(0);
+  async function fetchUpcomingFeed() {
+    const gen = ++upcomingGenRef.current;
+    setUpcomingLoading(true);
+    setUpcomingError(null);
+    try {
+      const res = await fetch("/api/upcoming-feed?days=2&history=60");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (gen === upcomingGenRef.current) setUpcoming(data.upcoming || []);
+    } catch (e: unknown) {
+      if (gen === upcomingGenRef.current) setUpcomingError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (gen === upcomingGenRef.current) setUpcomingLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (tab !== "upcoming") return;
+    fetchUpcomingFeed();
+    const iv = setInterval(fetchUpcomingFeed, 5 * 60 * 1000);
+    return () => { clearInterval(iv); upcomingGenRef.current++; /* invalidate any in-flight fetch */ };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   const TABS = [
     { id: "data", label: "Data Manager", icon: <Database size={16} /> },
     { id: "analyze", label: "Matchup Analyzer", icon: <Crosshair size={16} /> },
+    { id: "upcoming", label: "Upcoming Games", icon: <Calendar size={16} /> },
     { id: "log", label: "Bet Logger", icon: <ClipboardList size={16} /> },
     { id: "insights", label: "Historical Insights", icon: <LineIcon size={16} /> },
     { id: "ai", label: "AI Assistant", icon: <Bot size={16} /> },
@@ -414,6 +463,7 @@ export default function GGBetAnalyzer() {
         .rise { animation: rise .4s ease both; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
         .live { animation: pulse 1.8s ease-in-out infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         select { -webkit-appearance:none; appearance:none; }
       `}</style>
 
@@ -476,6 +526,8 @@ export default function GGBetAnalyzer() {
         ) : tab === "analyze" ? (
           <Analyzer players={players} settings={settings} lateNight={lateNight} matches={matches} wf={wf}
             onLog={(b) => setBets((p) => [b, ...p])} />
+        ) : tab === "upcoming" ? (
+          <UpcomingGamesFeed upcoming={upcoming} loading={upcomingLoading} error={upcomingError} onRefresh={fetchUpcomingFeed} />
         ) : tab === "log" ? (
           <BetLogger bets={bets} setBets={setBets} players={players} />
         ) : tab === "insights" ? (
@@ -1999,3 +2051,246 @@ function blankPlayer() {
 const tdR = { padding: "9px 12px", textAlign: "right", color: C.text };
 const iconBtn = { background: "transparent", border: "none", color: C.muted, cursor: "pointer", padding: 4, display: "inline-flex" };
 const tipStyle = { background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 8, fontSize: 12, fontFamily: "'JetBrains Mono'", color: C.text };
+
+/* ============================================================================
+   UPCOMING GAMES FEED
+   ========================================================================== */
+function UpcomingGamesFeed({ upcoming, loading, error, onRefresh }: {
+  upcoming: UpcomingGame[]; loading: boolean; error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="rise" style={{ display: "grid", gap: 18 }}>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>
+            Upcoming Matchups
+            {upcoming.length > 0 && (
+              <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 12, color: C.muted }}>
+                {upcoming.length} game{upcoming.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <Btn onClick={onRefresh} disabled={loading}>
+            <RefreshCw size={14} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
+            {loading ? "Loading…" : "Refresh"}
+          </Btn>
+        </div>
+
+        {error && (
+          <div style={{ color: C.neg, fontSize: 13, marginBottom: 12, padding: "8px 12px",
+            background: "#2e121033", borderRadius: 8, border: `1px solid ${C.neg}44` }}>
+            {error} — is the scraper running?
+          </div>
+        )}
+
+        {!loading && upcoming.length === 0 && !error ? (
+          <Empty
+            icon={<Calendar size={28} color={C.muted} />}
+            title="No upcoming games found"
+            body="Check back soon, or increase the days window. Make sure the scraper is running."
+          />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {upcoming.map((game) => (
+              <UpcomingGameCard key={game.external_id} game={game} />
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function UpcomingGameCard({ game }: { game: UpcomingGame }) {
+  const [expanded, setExpanded] = React.useState<"h2h" | "analysis" | null>(null);
+  const toggle = (section: "h2h" | "analysis") =>
+    setExpanded((prev) => (prev === section ? null : section));
+
+  const timeStr = `${game.date}  ${String(game.hour_utc).padStart(2, "0")}:00 UTC`;
+  const edge = game.analysis?.win_edge;
+  const bands = game.analysis?.score_bands;
+  const ppm = game.analysis?.ppm_model;
+  const h2h = game.h2h;
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      {/* Header row */}
+      <div style={{ padding: "12px 16px", background: C.surface2, display: "grid",
+        gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 10.5, color: C.muted, marginBottom: 3, fontFamily: "'JetBrains Mono'" }}>
+            {timeStr}  ·  {game.division}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>
+            {game.player1}
+            <span style={{ color: C.faint, fontWeight: 400, margin: "0 8px" }}>vs</span>
+            {game.player2}
+          </div>
+          {edge && (
+            <div style={{ marginTop: 5 }}>
+              <Badge tone="pos">{edge.favored} edge +{edge.edge_pct}%</Badge>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <Btn kind="ghost" onClick={() => toggle("h2h")} style={{ fontSize: 12, padding: "4px 10px" }}>
+            H2H {expanded === "h2h" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </Btn>
+          <Btn kind="ghost" onClick={() => toggle("analysis")} style={{ fontSize: 12, padding: "4px 10px" }}>
+            Analysis {expanded === "analysis" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </Btn>
+        </div>
+      </div>
+
+      {/* Player stats bar */}
+      {(game.p1_stats || game.p2_stats) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
+          {[
+            { label: game.player1, stats: game.p1_stats },
+            { label: game.player2, stats: game.p2_stats },
+          ].map(({ label, stats }) => (
+            <div key={label} style={{ padding: "10px 14px", background: C.surface }}>
+              <Label>{label}</Label>
+              {stats ? (
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Win%</div>
+                    <div style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: C.text }}>
+                      {stats.win_pct.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted }}>PPM</div>
+                    <div style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: C.accent }}>
+                      {stats.pts_per_match.toFixed(1)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Form</div>
+                    <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 12, letterSpacing: 2 }}>
+                      {(stats.recent_form || "—").split("").map((c, i) => (
+                        <span key={i} style={{ color: c === "W" ? C.pos : C.neg }}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : <div style={{ fontSize: 12, color: C.faint }}>No stats</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* H2H section */}
+      {expanded === "h2h" && (
+        <div style={{ padding: "12px 16px", background: C.surface, borderTop: `1px solid ${C.border}` }}>
+          <Label>Head-to-Head Record</Label>
+          {h2h ? (
+            <>
+              <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
+                <Stat label="Total Games" value={h2h.total_games} />
+                <Stat label={`${game.player1} Wins`} value={h2h.p1_wins} tone={C.pos} />
+                <Stat label={`${game.player2} Wins`} value={h2h.p2_wins} tone={C.neg} />
+                {h2h.avg_total != null && <Stat label="Avg Total" value={h2h.avg_total.toFixed(1)} />}
+              </div>
+              {h2h.recent.length > 0 && (
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  <div style={{ display: "grid",
+                    gridTemplateColumns: "100px 80px 80px 60px", gap: "4px 12px",
+                    fontFamily: "'JetBrains Mono'", marginBottom: 4 }}>
+                    <span style={{ color: C.faint }}>Date</span>
+                    <span style={{ color: C.faint }}>{game.player1}</span>
+                    <span style={{ color: C.faint }}>{game.player2}</span>
+                    <span style={{ color: C.faint }}>Winner</span>
+                  </div>
+                  {h2h.recent.slice(0, 8).map((g: Record<string, unknown>, i: number) => (
+                    <div key={i} style={{ display: "grid",
+                      gridTemplateColumns: "100px 80px 80px 60px", gap: "4px 12px" }}>
+                      <span>{String(g.date ?? "")}</span>
+                      <span style={{ color: C.text }}>{String(g.p1_score ?? "")}</span>
+                      <span style={{ color: C.text }}>{String(g.p2_score ?? "")}</span>
+                      <span style={{ color: g.winner === game.player1 ? C.pos : C.neg }}>
+                        {String(g.winner ?? "")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : <div style={{ color: C.faint, fontSize: 13 }}>No H2H history found.</div>}
+        </div>
+      )}
+
+      {/* Analysis section */}
+      {expanded === "analysis" && (
+        <div style={{ padding: "12px 16px", background: C.surface, borderTop: `1px solid ${C.border}` }}>
+          {bands ? (
+            <>
+              <Label>Score Prediction Bands (±0.5σ)</Label>
+              <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 12, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "120px 60px 60px 140px 50px",
+                  gap: "4px 8px", color: C.faint, marginBottom: 4 }}>
+                  <span></span><span>Mean</span><span>Std</span><span>Band</span><span>Conf</span>
+                </div>
+                {[
+                  { label: "Total (both)", band: bands.total },
+                  { label: `Home (${game.player1.slice(0, 10)})`, band: bands.p1 },
+                  { label: `Away (${game.player2.slice(0, 10)})`, band: bands.p2 },
+                ].map(({ label, band }) => (
+                  <div key={label} style={{ display: "grid",
+                    gridTemplateColumns: "120px 60px 60px 140px 50px", gap: "4px 8px" }}>
+                    <span style={{ color: C.muted }}>{label}</span>
+                    {band ? (
+                      <>
+                        <span style={{ color: C.text }}>{band.mean}</span>
+                        <span style={{ color: C.text }}>{band.std}</span>
+                        <span style={{ color: C.accent }}>[{band.low} – {band.high}]</span>
+                        <span style={{ color: band.confidence >= 60 ? C.pos : C.amber }}>
+                          {band.confidence.toFixed(0)}%
+                        </span>
+                      </>
+                    ) : <span style={{ color: C.faint, gridColumn: "span 4" }}>insufficient data</span>}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {ppm && (
+            <>
+              <Label>PPM Model (season averages)</Label>
+              <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "120px 70px 70px 80px",
+                  gap: "4px 8px", color: C.faint, marginBottom: 4 }}>
+                  <span></span><span>PPM</span><span>H2H Avg</span><span>Diff</span>
+                </div>
+                {[
+                  { label: "Total (both)", ppmVal: ppm.total, h2hAvg: h2h?.avg_total ?? null },
+                  { label: `${game.player1.slice(0, 10)}`, ppmVal: ppm.p1, h2hAvg: null },
+                  { label: `${game.player2.slice(0, 10)}`, ppmVal: ppm.p2, h2hAvg: null },
+                ].map(({ label, ppmVal, h2hAvg }) => (
+                  <div key={label} style={{ display: "grid",
+                    gridTemplateColumns: "120px 70px 70px 80px", gap: "4px 8px" }}>
+                    <span style={{ color: C.muted }}>{label}</span>
+                    <span style={{ color: C.text }}>{ppmVal.toFixed(1)}</span>
+                    <span style={{ color: C.faint }}>{h2hAvg != null ? h2hAvg.toFixed(1) : "—"}</span>
+                    <span style={{ color: ppm.vs_h2h_diff != null
+                      ? (ppm.vs_h2h_diff >= 0 ? C.pos : C.neg) : C.faint }}>
+                      {h2hAvg != null && ppm.vs_h2h_diff != null
+                        ? (ppm.vs_h2h_diff >= 0 ? "+" : "") + ppm.vs_h2h_diff.toFixed(1)
+                        : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!bands && !ppm && (
+            <div style={{ color: C.faint, fontSize: 13 }}>No analysis data available.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
