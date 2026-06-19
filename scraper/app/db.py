@@ -115,31 +115,42 @@ def archive_games(games: list[dict]) -> int:
     return inserted
 
 
-def head_to_head(p1: str, p2: str, limit: int = 20) -> dict:
-    """All historical matchups between two players from game_history."""
+def head_to_head(p1: str, p2: str, limit: int = 20, since_date: str | None = None) -> dict:
+    """All historical matchups between two players from game_history.
+
+    Args:
+        p1, p2:     Player names (case-insensitive).
+        limit:      Max rows to return in the ``recent`` list.
+        since_date: ISO date string (``YYYY-MM-DD``).  When set, only games on or
+                    after this date are counted in the aggregate stats and recent list.
+    """
     lp1, lp2 = p1.lower(), p2.lower()
+    date_filter = "AND game_date >= ?" if since_date else ""
+    date_args = (since_date,) if since_date else ()
     with _lock, _conn() as c:
         # Aggregate over FULL history (no LIMIT) so stats are accurate.
-        agg = c.execute("""
+        agg = c.execute(f"""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN (LOWER(player1)=? AND score1>score2)
                              OR  (LOWER(player2)=? AND score2>score1)
                             THEN 1 ELSE 0 END) AS p1_wins,
                    AVG(CAST(total AS REAL)) AS avg_total
             FROM game_history
-            WHERE (LOWER(player1)=? AND LOWER(player2)=?)
-               OR (LOWER(player1)=? AND LOWER(player2)=?)
-        """, (lp1, lp1, lp1, lp2, lp2, lp1)).fetchone()
+            WHERE ((LOWER(player1)=? AND LOWER(player2)=?)
+               OR  (LOWER(player1)=? AND LOWER(player2)=?))
+               {date_filter}
+        """, (lp1, lp1, lp1, lp2, lp2, lp1) + date_args).fetchone()
         # Recent detail list capped to `limit`.
-        rows = c.execute("""
+        rows = c.execute(f"""
             SELECT id, game_date, hour_utc, player1, player2,
                    score1, score2, total, division
             FROM game_history
-            WHERE (LOWER(player1) = ? AND LOWER(player2) = ?)
-               OR (LOWER(player1) = ? AND LOWER(player2) = ?)
+            WHERE ((LOWER(player1) = ? AND LOWER(player2) = ?)
+               OR  (LOWER(player1) = ? AND LOWER(player2) = ?))
+               {date_filter}
             ORDER BY game_date DESC, COALESCE(hour_utc, 0) DESC
             LIMIT ?
-        """, (lp1, lp2, lp2, lp1, limit)).fetchall()
+        """, (lp1, lp2, lp2, lp1) + date_args + (limit,)).fetchall()
     total = agg["total"] or 0
     p1_wins = agg["p1_wins"] or 0
     p2_wins = total - p1_wins

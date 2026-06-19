@@ -1,0 +1,30 @@
+[
+ {
+  "externalId": "NB999990626",
+  "startDate": "2026-06-20T18:00:00Z",
+  "isCancelled": false,
+  "teamAName": "Phoenix Suns",
+  "teamBName": "Cleveland Cavaliers",
+  "participantAName": "ADMIRAL",
+  "participantBName": "PATIENCE",
+  "streamName": "Ebasketball 4",
+  "tournamentName": "Ebasketball H2H GG League",
+  "matchStatus": "PREMATCH",
+  "teamAScore": null,
+  "teamBScore": null
+ },
+ {
+  "externalId": "NB999980626",
+  "startDate": "2026-06-20T18:04:00Z",
+  "isCancelled": false,
+  "teamAName": "Toronto Raptors",
+  "teamBName": "Brooklyn Nets",
+  "participantAName": "CYPHER",
+  "participantBName": "SPOOKY",
+  "streamName": "Ebasketball 3",
+  "tournamentName": "Ebasketball H2H GG League",
+  "matchStatus": "PREMATCH",
+  "teamAScore": null,
+  "teamBScore": null
+ }
+]

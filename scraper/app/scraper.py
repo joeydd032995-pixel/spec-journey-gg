@@ -8,6 +8,7 @@ and only imported on demand so the service runs without a browser installed.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from . import config, db, normalize
 from .client import H2HGGLClient
@@ -122,6 +123,139 @@ def deep_archive(days: int = config.ARCHIVE_DAYS) -> int:
     inserted = db.archive_games(games)
     log.info("deep_archive: %d new rows from %d games over %d days", inserted, len(games), days)
     return inserted
+
+
+def build_upcoming_feed(days_schedule: int = 2, days_history: int = 60) -> dict:
+    """Pre-compute H2H summary, score prediction bands, PPM model, and win% edge
+    for every upcoming fixture so the frontend can render rich per-game cards.
+
+    Args:
+        days_schedule: How many days ahead to look for upcoming fixtures.
+        days_history:  Only H2H games played within this many days are included in
+                       aggregate stats, score bands, and the PPM model.
+
+    Returns a dict shaped as::
+
+        {
+            "upcoming": [ { ...fixture fields..., "analysis": {...} }, ... ],
+            "meta": { "source", "count", "days_schedule", "days_history", "fetched" }
+        }
+    """
+    # 1. Fetch upcoming schedule and current player stats.
+    schedule = get_schedule(days=days_schedule)
+    players = get_players(min_gp=1)
+
+    # 2. Build player lookup keyed by uppercased name.
+    player_lookup: dict[str, dict] = {p["name"].upper(): p for p in players}
+
+    def _player_card(raw: dict | None) -> dict | None:
+        """Normalise a player row to the fields the GUI needs."""
+        if raw is None:
+            return None
+        wp = raw.get("win_pct")
+        ppm = raw.get("pts_per_match")
+        return {
+            "win_pct": float(wp) if isinstance(wp, (int, float)) else None,
+            "pts_per_match": float(ppm) if isinstance(ppm, (int, float)) else None,
+            "gp": raw.get("gp"),
+            "recent_form": raw.get("recent_form", ""),
+        }
+
+    upcoming = []
+    for fixture in schedule:
+        p1_name: str = fixture["player1"]
+        p2_name: str = fixture["player2"]
+
+        p1_stats_raw = player_lookup.get(p1_name.upper())
+        p2_stats_raw = player_lookup.get(p2_name.upper())
+
+        p1_card = _player_card(p1_stats_raw)
+        p2_card = _player_card(p2_stats_raw)
+
+        # 3. Head-to-head history filtered to the requested history window.
+        since = (datetime.now(timezone.utc).date() - timedelta(days=days_history)).isoformat()
+        h2h = db.head_to_head(p1_name, p2_name, limit=50, since_date=since)
+
+        # 4. Extract score series from H2H recent list.
+        recent = h2h.get("recent") or []
+        totals = [r["total"] for r in recent if isinstance(r.get("total"), (int, float))]
+        p1_scores = [r["p1_score"] for r in recent if isinstance(r.get("p1_score"), (int, float))]
+        p2_scores = [r["p2_score"] for r in recent if isinstance(r.get("p2_score"), (int, float))]
+
+        # 5. Score prediction bands (None when < 3 H2H games exist).
+        score_bands: dict | None = None
+        if len(totals) >= 3:
+            score_bands = {
+                "total": normalize.score_band(totals),
+                "p1": normalize.score_band(p1_scores),
+                "p2": normalize.score_band(p2_scores),
+            }
+
+        # 6. PPM model — leave fields None when player data is unavailable.
+        p1_ppm = p1_card["pts_per_match"] if p1_card else None
+        p2_ppm = p2_card["pts_per_match"] if p2_card else None
+        avg_total = h2h.get("avg_total")
+        if p1_ppm is not None and p2_ppm is not None:
+            ppm_total: float | None = round(p1_ppm + p2_ppm, 1)
+            vs_h2h_diff = round(ppm_total - avg_total, 1) if avg_total is not None else None
+        else:
+            ppm_total = None
+            vs_h2h_diff = None
+        ppm_model = {
+            "total": ppm_total,
+            "p1": round(p1_ppm, 1) if p1_ppm is not None else None,
+            "p2": round(p2_ppm, 1) if p2_ppm is not None else None,
+            "vs_h2h_diff": vs_h2h_diff,
+        }
+
+        # 7. Win% edge.
+        wp1 = p1_card["win_pct"] if p1_card else None
+        wp2 = p2_card["win_pct"] if p2_card else None
+        if wp1 is not None and wp2 is not None:
+            favored = p1_name if wp1 >= wp2 else p2_name
+            edge_pct = round(abs(wp1 - wp2), 1)
+        else:
+            favored = None
+            edge_pct = None
+        win_edge = {"favored": favored, "edge_pct": edge_pct}
+
+        upcoming.append({
+            "external_id": fixture["external_id"],
+            "date": fixture["date"],
+            "hour_utc": fixture["hour_utc"],
+            "player1": p1_name,
+            "player2": p2_name,
+            "p1_team": fixture.get("p1_team", ""),
+            "p2_team": fixture.get("p2_team", ""),
+            "division": fixture.get("division", ""),
+            "p1_stats": p1_card,
+            "p2_stats": p2_card,
+            "h2h": {
+                "total_games": h2h["total"],
+                "p1_wins": h2h["p1_wins"],
+                "p2_wins": h2h["p2_wins"],
+                "avg_total": h2h["avg_total"],
+                "recent": recent,
+            },
+            "analysis": {
+                "score_bands": score_bands,
+                "ppm_model": ppm_model,
+                "win_edge": win_edge,
+            },
+        })
+
+    result = {
+        "upcoming": upcoming,
+        "meta": {
+            "source": "h2hggl",
+            "count": len(upcoming),
+            "days_schedule": days_schedule,
+            "days_history": days_history,
+            "fetched": _now(),
+        },
+    }
+    db.save_snapshot(f"upcoming-feed:{days_schedule}:{days_history}", result)
+    return result
 
 
 def _now() -> str:

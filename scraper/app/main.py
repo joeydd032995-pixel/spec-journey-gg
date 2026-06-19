@@ -117,3 +117,14 @@ def history(limit: int = Query(200, ge=1, le=1000)):
     """Recent rows from the permanent game_history archive."""
     rows = db.history_games(limit=limit)
     return {"count": len(rows), "games": rows}
+
+
+@app.get("/api/upcoming-feed")
+def upcoming_feed(days: int = Query(2, ge=1, le=14), history_days: int = Query(60, ge=7, le=365)):
+    """Rich per-game cards for every upcoming fixture.
+
+    Pre-computes H2H summary, score prediction bands (±0.5σ), PPM model, and
+    win% edge so the frontend can render a full card without separate API calls.
+    """
+    key = f"upcoming-feed:{days}:{history_days}"
+    return _served(key, lambda: scraper.build_upcoming_feed(days, history_days))
