@@ -36,6 +36,7 @@ try:
         _ended_games,
         _filter_h2h,
         _fmt,
+        _parse_game,
         _score_band,
     )
 except ImportError as _exc:
@@ -148,6 +149,7 @@ class App:
         self._build_standings_tab(nb)
         self._build_h2h_tab(nb)       # initialises self._player_combos
         self._build_matchup_tab(nb)   # extends  self._player_combos
+        self._build_schedule_tab(nb)
         self._build_analyze_tab(nb)
         self._build_export_tab(nb)
 
@@ -439,6 +441,189 @@ class App:
             _set_text(self._mu_text, text)
 
         self._run(fetch, done, f"Analyzing {p1} vs {p2}…")
+
+    # -----------------------------------------------------------------------
+    # Schedule tab
+    # -----------------------------------------------------------------------
+
+    def _build_schedule_tab(self, nb: ttk.Notebook) -> None:
+        """Build the Schedule tab: upcoming fixtures + one-click matchup analysis."""
+        frame = ttk.Frame(nb)
+        nb.add(frame, text="Schedule")
+
+        ctrl = ttk.Frame(frame)
+        ctrl.pack(fill="x", padx=8, pady=6)
+
+        ttk.Label(ctrl, text="Days ahead:").pack(side="left")
+        self._sched_days_var = tk.StringVar(value="2")
+        ttk.Spinbox(ctrl, from_=1, to=14, width=4,
+                    textvariable=self._sched_days_var).pack(side="left", padx=(4, 12))
+
+        self._sched_status = ttk.Label(ctrl, text="")
+        self._sched_status.pack(side="left", padx=6)
+
+        ttk.Button(ctrl, text="Refresh",
+                   command=self._sched_refresh).pack(side="right")
+
+        # Treeview for upcoming fixtures — contained in its own row-frame so that
+        # ctrl2 and _sched_out can pack side="top" (full-width) below it.
+        tree_frame = ttk.Frame(frame)
+        tree_frame.pack(fill="x", padx=8, pady=4)
+
+        cols = ("date", "time", "player1", "player2", "division")
+        self._sched_tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
+        for col, w, label in [
+            ("date",      90, "Date"),
+            ("time",      70, "Time (UTC)"),
+            ("player1",  160, "Player 1"),
+            ("player2",  160, "Player 2"),
+            ("division", 110, "Division"),
+        ]:
+            self._sched_tree.heading(col, text=label)
+            self._sched_tree.column(col, width=w, anchor="center")
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self._sched_tree.yview)
+        self._sched_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._sched_tree.pack(side="left", fill="both", expand=True)
+
+        # Analyze controls — packed into frame below the tree_frame row
+        ctrl2 = ttk.Frame(frame)
+        ctrl2.pack(fill="x", padx=8, pady=(0, 4))
+
+        ttk.Label(ctrl2, text="History days:").pack(side="left")
+        self._sched_hist_var = tk.StringVar(value="30")
+        ttk.Spinbox(ctrl2, from_=7, to=365, width=5,
+                    textvariable=self._sched_hist_var).pack(side="left", padx=(4, 12))
+
+        self._sched_analyze_btn = ttk.Button(ctrl2, text="Analyze Selected",
+                                             command=self._sched_analyze)
+        self._sched_analyze_btn.pack(side="left")
+
+        self._sched_analyze_status = ttk.Label(ctrl2,
+                                               text="Select a game then click Analyze")
+        self._sched_analyze_status.pack(side="left", padx=8)
+
+        # ScrolledText for analysis output
+        self._sched_out = scrolledtext.ScrolledText(
+            frame, state="disabled", wrap="word",
+            font=("Courier New", 10), height=18,
+        )
+        self._sched_out.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # Store fixture data keyed by tree item id
+        self._sched_fixtures: dict[str, dict] = {}
+
+    def _sched_refresh(self) -> None:
+        """Fetch upcoming fixtures in a background thread and populate the treeview."""
+        self._sched_status.config(text="Loading…")
+        try:
+            days = max(1, min(14, int(self._sched_days_var.get() or "2")))
+        except ValueError:
+            days = 2
+
+        def fetch() -> list[dict]:
+            try:
+                c = _Client()
+                try:
+                    raw = c.schedule_range(days, future=True)
+                finally:
+                    c.close()
+            except Exception:
+                # Reset the in-tab status label before _run's generic handler fires.
+                self.root.after(0, lambda: self._sched_status.config(
+                    text="Load failed — click Refresh to retry"))
+                raise
+            # Normalize raw API events through _parse_game so field names match
+            # the rest of the codebase (p1, p2, date, hour_utc, status, division).
+            games = [g for ev in raw if (g := _parse_game(ev)) is not None]
+            upcoming = [g for g in games if g.get("status", "") != "MATCH_ENDED"]
+            upcoming.sort(key=lambda g: g.get("ts", 0))
+            return upcoming
+
+        def done(fixtures: list[dict]) -> None:
+            self._sched_populate(fixtures)
+
+        self._run(fetch, done, "Fetching schedule…")
+
+    def _sched_populate(self, fixtures: list[dict]) -> None:
+        """Clear the schedule treeview and insert *fixtures*."""
+        self._sched_tree.delete(*self._sched_tree.get_children())
+        self._sched_fixtures.clear()
+        for f in fixtures:
+            ts = f.get("ts", 0)
+            try:
+                t = int(ts)
+                time_str = f"{(t % 86400) // 3600:02d}:{(t % 3600) // 60:02d}"
+            except (TypeError, ValueError):
+                time_str = "--:--"
+            iid = self._sched_tree.insert("", "end", values=(
+                f.get("date", ""),
+                time_str,
+                f.get("p1", ""),
+                f.get("p2", ""),
+                f.get("division", ""),
+            ))
+            self._sched_fixtures[iid] = f
+        count = len(fixtures)
+        self._sched_status.config(
+            text=f"{count} upcoming game{'s' if count != 1 else ''}"
+        )
+
+    def _sched_analyze(self) -> None:
+        """Run a full matchup analysis on the selected fixture."""
+        sel = self._sched_tree.selection()
+        if not sel:
+            self._sched_analyze_status.config(text="Select a game first")
+            return
+        f = self._sched_fixtures.get(sel[0])
+        if not f:
+            return
+        p1 = f.get("p1", "")
+        p2 = f.get("p2", "")
+        try:
+            days = max(7, min(365, int(self._sched_hist_var.get() or "30")))
+        except ValueError:
+            days = 30
+        self._sched_analyze_status.config(text=f"Analyzing {p1} vs {p2}…")
+        self._sched_analyze_btn.config(state="disabled")
+
+        def run() -> tuple:
+            try:
+                c = _Client()
+                try:
+                    parts  = c.participants()
+                    events = c.schedule_range(days)
+                finally:
+                    c.close()
+            except Exception:
+                # Re-enable the button before _run's generic error handler fires,
+                # so the user can retry after a network failure.
+                self.root.after(0, lambda: (
+                    self._sched_analyze_btn.config(state="normal"),
+                    self._sched_analyze_status.config(text="Error — try again"),
+                ))
+                raise
+            players = _aggregate_players(parts, min_gp=1)
+            games   = _ended_games(events)
+            h2h     = _filter_h2h(games, p1, p2)
+            return players, h2h
+
+        def done(result: tuple) -> None:
+            players, h2h = result
+            try:
+                text = _matchup_text(p1, p2, days, players, h2h)
+            except Exception as exc:
+                text = f"Error building analysis: {exc}"
+            self._sched_show_analysis(text)
+
+        self._run(run, done, f"Analyzing {p1} vs {p2}…")
+
+    def _sched_show_analysis(self, text: str) -> None:
+        """Display analysis text in the Schedule tab output widget."""
+        _set_text(self._sched_out, text)
+        self._sched_analyze_btn.config(state="normal")
+        self._sched_analyze_status.config(text="Done")
 
     # -----------------------------------------------------------------------
     # Analyze tab
