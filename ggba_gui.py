@@ -772,11 +772,20 @@ def _matchup_text(p1: str, p2: str, days: int,
             if len(totals) > 1:
                 row += f"   Std dev: {statistics.stdev(totals):.1f}"
             lines.append(row)
+        lines.append(f"\n  Last 5 H2H Scores (newest first):")
+        lines.append(f"  {'Date':<12} {'P1':<14} {'S1':>4}  {'S2':>4}  {'P2':<14} {'Winner'}")
+        lines.append("  " + "─" * 58)
+        for g in reversed(h2h[-5:]):
+            lines.append(
+                f"  {g['date']:<12} {g['p1'][:13]:<14} {g['s1']:>4}  {g['s2']:>4}  "
+                f"{g['p2'][:13]:<14} {g['winner']}"
+            )
 
     # Score prediction bands
     lines.append("\n  Score Prediction Bands  (±0.5σ tight band, empirical confidence)")
     lines.append(f"  {'─'*58}")
     lines.append(f"  {'':20} {'Mean':>6}  {'Std':>5}  {'Band':^20}  {'Conf':>5}")
+    lines.append("  (Conf = % of H2H games that fell in this ±0.5σ band — higher = more consistent)")
     for label, seq in [
         ("Total  (both)",       totals),
         (f"Home   ({p1[:14]})", p1_scores),
@@ -812,12 +821,41 @@ def _matchup_text(p1: str, p2: str, days: int,
                 else:
                     lines.append(f"  {label:<20} {ppm_val:>6.1f}  {'—':>8}")
 
+            if totals:
+                h2h_avg_total = statistics.mean(totals)
+                diff = exp - h2h_avg_total
+                if diff > 10:
+                    lean = f"LEAN OVER {h2h_avg_total:.1f} — PPM projects +{diff:.1f} above H2H avg"
+                elif diff < -10:
+                    lean = f"LEAN UNDER {h2h_avg_total:.1f} — PPM projects {diff:.1f} below H2H avg"
+                else:
+                    lean = f"NEUTRAL — PPM ({diff:+.1f}) is close to H2H avg, no strong lean"
+                lines.append(f"\n  ► Score Lean: {lean}")
+            if len(totals) >= 5:
+                recent5_avg = statistics.mean([g["s1"] + g["s2"] for g in h2h[-5:]])
+                trend_diff = recent5_avg - statistics.mean(totals)
+                trend_label = (f"+{trend_diff:.1f} HOTTER" if trend_diff > 3 else
+                               f"{trend_diff:.1f} COOLER" if trend_diff < -3 else "STABLE")
+                lines.append(
+                    f"  ► Recent Trend (last 5 vs avg): {trend_label} "
+                    f"({recent5_avg:.1f} vs {statistics.mean(totals):.1f})"
+                )
+
         wp1 = pp1.get("win_pct")
         wp2 = pp2.get("win_pct")
         if isinstance(wp1, (int, float)) and isinstance(wp2, (int, float)):
             edge    = abs(wp1 - wp2)
             favored = p1 if wp1 > wp2 else p2
             lines.append(f"\n  Win%-based edge: {favored} favored (+{edge:.1f}%)")
+
+        f1_wins = pp1.get("recent_form", "").count("W")
+        f2_wins = pp2.get("recent_form", "").count("W")
+        if f1_wins != f2_wins:
+            form_edge = p1 if f1_wins > f2_wins else p2
+            edge_wins = f1_wins if form_edge == p1 else f2_wins
+            lines.append(f"  ► Form Edge: {form_edge} ({edge_wins}/5 recent wins)")
+        else:
+            lines.append(f"  ► Form Edge: EVEN ({f1_wins}/5 each)")
 
     lines.append("\n" + sep)
 
