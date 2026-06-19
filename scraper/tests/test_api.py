@@ -18,6 +18,7 @@ def load(name):
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
+    """TestClient with patched H2HGGLClient returning committed fixture data."""
     # Isolated DB + no background scheduler during tests.
     monkeypatch.setenv("H2HGGL_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("H2HGGL_REFRESH_GAMES_MIN", "0")
@@ -70,6 +71,7 @@ def upcoming_client(monkeypatch, tmp_path):
     upcoming_events = load("schedule_upcoming.json")
 
     def _schedule_day(_self, day):
+        """Return only upcoming_events whose startDate falls on *day*."""
         day_key = day.strftime("%Y-%m-%d")
         return [e for e in upcoming_events if str(e.get("startDate", "")).startswith(day_key)]
 
@@ -83,11 +85,13 @@ def upcoming_client(monkeypatch, tmp_path):
 
 
 def test_health(client):
+    """GET /health returns 200 with status ok."""
     r = client.get("/health")
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
 def test_feed_shape_and_filled_stats(client):
+    """GET /api/feed returns expected top-level keys and numeric player stats."""
     r = client.get("/api/feed?days=2&minGp=1")
     assert r.status_code == 200
     body = r.json()
@@ -102,6 +106,7 @@ def test_feed_shape_and_filled_stats(client):
 
 
 def test_standings_ranked(client):
+    """GET /api/standings returns rows with rank=1 first."""
     r = client.get("/api/standings")
     assert r.status_code == 200
     rows = r.json()
@@ -109,12 +114,14 @@ def test_standings_ranked(client):
 
 
 def test_player_lookup_and_404(client):
+    """GET /api/players/{id} returns 200 for a known player and 404 for unknown."""
     name = client.get("/api/players").json()[0]["name"]
     assert client.get(f"/api/players/{name}").status_code == 200
     assert client.get("/api/players/__nope__").status_code == 404
 
 
 def test_games_have_division(client):
+    """GET /api/games returns completed matches that have division populated."""
     rows = client.get("/api/games?days=2").json()
     assert rows
     assert any(m["division"] for m in rows)
