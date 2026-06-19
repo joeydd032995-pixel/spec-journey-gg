@@ -409,10 +409,40 @@ class App:
                    command=self._do_matchup).pack(side="left")
 
         self._mu_text = scrolledtext.ScrolledText(
-            frame, state="disabled", wrap="word", font=("Courier", 10))
-        self._mu_text.pack(fill="both", expand=True, padx=6, pady=4)
+            frame, state="disabled", wrap="word", font=("Courier", 10), height=22)
+        self._mu_text.pack(fill="both", expand=True, padx=6, pady=(4, 0))
 
         self._player_combos += [self._mu_p1, self._mu_p2]
+
+        # Stage 2: O/U line inputs
+        line_frame = ttk.LabelFrame(frame, text="  Score Line Override (Sportsbook O/U)  ")
+        line_frame.pack(fill="x", padx=6, pady=(4, 0))
+
+        ttk.Label(line_frame, text="Total (Both):").grid(row=0, column=0, padx=8, pady=6, sticky="e")
+        self._line_total = tk.StringVar()
+        ttk.Entry(line_frame, textvariable=self._line_total, width=8).grid(row=0, column=1, padx=4)
+
+        ttk.Label(line_frame, text="Home:").grid(row=0, column=2, padx=8, sticky="e")
+        self._line_home = tk.StringVar()
+        ttk.Entry(line_frame, textvariable=self._line_home, width=8).grid(row=0, column=3, padx=4)
+
+        ttk.Label(line_frame, text="Away:").grid(row=0, column=4, padx=8, sticky="e")
+        self._line_away = tk.StringVar()
+        ttk.Entry(line_frame, textvariable=self._line_away, width=8).grid(row=0, column=5, padx=4)
+
+        ttk.Button(line_frame, text="Compare Lines →",
+                   command=self._do_line_compare).grid(row=0, column=6, padx=12)
+
+        ttk.Label(line_frame,
+                  text="Enter the posted O/U lines then click Compare — does not change model data.",
+                  foreground="gray").grid(row=1, column=0, columnspan=7, padx=8, pady=(0, 4), sticky="w")
+
+        # Stage 3: comparison output
+        self._mu_compare_text = scrolledtext.ScrolledText(
+            frame, state="disabled", wrap="word", font=("Courier", 10), height=14)
+        self._mu_compare_text.pack(fill="both", expand=True, padx=6, pady=(4, 6))
+
+        self._mu_snapshot: dict | None = None
 
     def _do_matchup(self) -> None:
         """Fetch data and produce a full matchup analysis."""
@@ -437,10 +467,36 @@ class App:
 
         def done(result: tuple) -> None:
             players, h2h = result
-            text = _matchup_text(p1, p2, days, players, h2h)
+            text, snapshot = _matchup_text(p1, p2, days, players, h2h)
             _set_text(self._mu_text, text)
+            self._mu_snapshot = snapshot
+            _set_text(self._mu_compare_text, "  Enter O/U lines above and click Compare →")
 
         self._run(fetch, done, f"Analyzing {p1} vs {p2}…")
+
+    def _do_line_compare(self) -> None:
+        """Compare sportsbook O/U lines against the cached model snapshot."""
+        if not self._mu_snapshot:
+            messagebox.showwarning("No data", "Run Analyze Matchup first.")
+            return
+
+        def _parse_line(var: tk.StringVar) -> float | None:
+            try:
+                v = float(var.get().strip())
+                return v if v > 0 else None
+            except ValueError:
+                return None
+
+        line_total = _parse_line(self._line_total)
+        line_home  = _parse_line(self._line_home)
+        line_away  = _parse_line(self._line_away)
+
+        if not any([line_total, line_home, line_away]):
+            messagebox.showwarning("No lines entered", "Enter at least one O/U line value.")
+            return
+
+        text = _line_comparison_text(self._mu_snapshot, line_total, line_home, line_away)
+        _set_text(self._mu_compare_text, text)
 
     # -----------------------------------------------------------------------
     # Schedule tab
@@ -612,7 +668,7 @@ class App:
         def done(result: tuple) -> None:
             players, h2h = result
             try:
-                text = _matchup_text(p1, p2, days, players, h2h)
+                text, _snapshot = _matchup_text(p1, p2, days, players, h2h)
             except Exception as exc:
                 text = f"Error building analysis: {exc}"
             self._sched_show_analysis(text)
@@ -736,7 +792,7 @@ class App:
 # ---------------------------------------------------------------------------
 
 def _matchup_text(p1: str, p2: str, days: int,
-                  players: list[dict], h2h: list[dict]) -> str:
+                  players: list[dict], h2h: list[dict]) -> tuple[str, dict]:
     """Build a full matchup analysis report as a plain-text string."""
     def _find(name: str) -> dict | None:
         return next((p for p in players if p["name"].lower() == name.lower()), None)
@@ -872,6 +928,115 @@ def _matchup_text(p1: str, p2: str, days: int,
                 f"  {g['date']:<12} {g['p1']:<22} {g['s1']:>4}  {g['s2']:>4}  "
                 f"{g['p2']:<22} {g['winner']}"
             )
+
+    snapshot = {
+        "p1": p1, "p2": p2,
+        "model_total":  statistics.mean(totals)    if totals    else None,
+        "model_home":   statistics.mean(p1_scores) if p1_scores else None,
+        "model_away":   statistics.mean(p2_scores) if p2_scores else None,
+        "std_total":    statistics.stdev(totals)   if len(totals) > 1 else 0.0,
+        "std_home":     statistics.stdev(p1_scores) if len(p1_scores) > 1 else 0.0,
+        "std_away":     statistics.stdev(p2_scores) if len(p2_scores) > 1 else 0.0,
+        "ppm_total":    (pp1["pts_per_match"] + pp2["pts_per_match"]) if pp1 and pp2 else None,
+        "ppm_home":     pp1["pts_per_match"] if pp1 else None,
+        "ppm_away":     pp2["pts_per_match"] if pp2 else None,
+        "h2h_n":        len(totals),
+        "band_total":   _score_band(totals),
+        "band_home":    _score_band(p1_scores),
+        "band_away":    _score_band(p2_scores),
+    }
+    return "\n".join(lines) + "\n", snapshot
+
+
+def _line_comparison_text(snap: dict,
+                          line_total: float | None,
+                          line_home:  float | None,
+                          line_away:  float | None) -> str:
+    """Format a read-only O/U line comparison overlay against the model snapshot."""
+    sep   = "=" * 62
+    lines = [
+        sep,
+        f"  SCORE LINE COMPARISON  —  {snap['p1']} vs {snap['p2']}",
+        "  (Model data unchanged — this is a read-only overlay)",
+        sep,
+        f"\n  {'Metric':<22} {'Model Avg':>10}  {'O/U Line':>10}  {'Diff':>8}  {'Edge'}",
+        f"  {'─' * 58}",
+    ]
+
+    def _row(label, model_val, line_val, std_val, band):
+        if model_val is None or line_val is None:
+            lines.append(f"  {label:<22} {'—':>10}  {str(line_val or '—'):>10}  {'—':>8}  no model data")
+            return
+        diff   = line_val - model_val
+        sigmas = diff / std_val if std_val and std_val > 0 else None
+
+        if abs(diff) < 1.5:
+            edge = "PUSH  — line is ~at model"
+        elif diff > 0:
+            pct  = abs(diff) / model_val * 100
+            edge = f"LEAN UNDER  ({pct:.1f}% above model avg)"
+        else:
+            pct  = abs(diff) / model_val * 100
+            edge = f"LEAN OVER   ({pct:.1f}% below model avg)"
+
+        band_note = ""
+        if band:
+            if band["low"] <= line_val <= band["high"]:
+                band_note = f"  ✓ inside ±0.5σ band [{band['low']:.1f}–{band['high']:.1f}]"
+            elif line_val > band["high"]:
+                band_note = f"  ↑ ABOVE band [{band['low']:.1f}–{band['high']:.1f}]"
+            else:
+                band_note = f"  ↓ BELOW band [{band['low']:.1f}–{band['high']:.1f}]"
+
+        sigma_str = f"({sigmas:+.2f}σ)" if sigmas is not None else ""
+        lines.append(
+            f"  {label:<22} {model_val:>10.1f}  {line_val:>10.1f}  "
+            f"{diff:>+7.1f}  {sigma_str}"
+        )
+        lines.append(f"    → {edge}{band_note}")
+
+    _row("Total (Both)",
+         snap["model_total"], line_total, snap["std_total"], snap["band_total"])
+    _row(f"Home ({snap['p1'][:14]})",
+         snap["model_home"],  line_home,  snap["std_home"],  snap["band_home"])
+    _row(f"Away ({snap['p2'][:14]})",
+         snap["model_away"],  line_away,  snap["std_away"],  snap["band_away"])
+
+    if snap.get("ppm_total") and line_total:
+        ppm_diff = line_total - snap["ppm_total"]
+        lines.append("\n  PPM Projection vs Line:")
+        lines.append("  " + "─" * 40)
+        lines.append(f"  PPM Total:  {snap['ppm_total']:.1f}   Line: {line_total:.1f}   "
+                     f"Diff: {ppm_diff:+.1f}")
+        if ppm_diff > 5:
+            lines.append("  → Line is set ABOVE PPM model — slight under lean from season stats")
+        elif ppm_diff < -5:
+            lines.append("  → Line is set BELOW PPM model — slight over lean from season stats")
+        else:
+            lines.append("  → Line aligns with PPM model — no strong seasonal edge")
+
+    lines.append(f"\n  {'─' * 58}")
+    lines.append("  CONSENSUS:")
+    verdicts = []
+    for label, model_v, line_v in [
+        ("Total", snap["model_total"], line_total),
+        ("Home",  snap["model_home"],  line_home),
+        ("Away",  snap["model_away"],  line_away),
+    ]:
+        if model_v and line_v:
+            diff = line_v - model_v
+            if diff > 1.5:
+                verdicts.append(f"{label}: UNDER")
+            elif diff < -1.5:
+                verdicts.append(f"{label}: OVER")
+            else:
+                verdicts.append(f"{label}: PUSH")
+
+    if verdicts:
+        lines.append(f"  {' | '.join(verdicts)}")
+    lines.append(f"\n  n={snap['h2h_n']} H2H games used in model  "
+                 f"(original data not modified)")
+    lines.append("\n" + sep)
 
     return "\n".join(lines) + "\n"
 
