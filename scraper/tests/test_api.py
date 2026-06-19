@@ -46,6 +46,38 @@ def client(monkeypatch, tmp_path):
         yield c
 
 
+@pytest.fixture
+def upcoming_client(monkeypatch, tmp_path):
+    """Client fixture that returns upcoming (non-ended) fixtures for the schedule."""
+    monkeypatch.setenv("H2HGGL_DB_PATH", str(tmp_path / "test_upcoming.db"))
+    monkeypatch.setenv("H2HGGL_REFRESH_GAMES_MIN", "0")
+    monkeypatch.setenv("H2HGGL_REFRESH_PLAYERS_MIN", "0")
+
+    import importlib
+    from app import config as _cfg
+    importlib.reload(_cfg)
+    from app import cache, db, client as _client, scraper, main
+    importlib.reload(cache)
+    importlib.reload(db)
+    importlib.reload(_client)
+    importlib.reload(scraper)
+    importlib.reload(main)
+
+    parts = load("participants_nba.json")
+    # Historical events used by schedule_range (for archive/stats context).
+    history_events = load("schedule_2026-06-15.json") + load("schedule_2026-06-16.json")
+    # Upcoming events returned per day (not MATCH_ENDED).
+    upcoming_events = load("schedule_upcoming.json")
+
+    monkeypatch.setattr(_client.H2HGGLClient, "participants", lambda self: parts)
+    monkeypatch.setattr(_client.H2HGGLClient, "schedule_range", lambda self, days: history_events)
+    monkeypatch.setattr(_client.H2HGGLClient, "schedule_day", lambda self, day: upcoming_events)
+    monkeypatch.setattr(_client.H2HGGLClient, "close", lambda self: None)
+
+    with TestClient(main.app) as c:
+        yield c
+
+
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200 and r.json()["status"] == "ok"
@@ -82,3 +114,44 @@ def test_games_have_division(client):
     rows = client.get("/api/games?days=2").json()
     assert rows
     assert any(m["division"] for m in rows)
+
+
+def test_upcoming_feed_shape(upcoming_client):
+    """GET /api/upcoming-feed returns 200 with 'upcoming' list and 'meta' dict."""
+    r = upcoming_client.get("/api/upcoming-feed?days=2&history_days=30")
+    assert r.status_code == 200
+    body = r.json()
+    assert "upcoming" in body, "response must have 'upcoming' key"
+    assert "meta" in body, "response must have 'meta' key"
+    assert isinstance(body["upcoming"], list)
+    assert body["meta"]["source"] == "h2hggl"
+    assert body["meta"]["days_schedule"] == 2
+    assert body["meta"]["days_history"] == 30
+
+
+def test_upcoming_feed_analysis_shape(upcoming_client):
+    """Each fixture card in 'upcoming' must carry an 'analysis' sub-dict."""
+    r = upcoming_client.get("/api/upcoming-feed?days=2&history_days=30")
+    assert r.status_code == 200
+    body = r.json()
+    if not body["upcoming"]:
+        pytest.skip("no upcoming fixtures in test fixtures")
+    card = body["upcoming"][0]
+    assert "analysis" in card, "each card must have 'analysis'"
+    analysis = card["analysis"]
+    assert "score_bands" in analysis
+    assert "ppm_model" in analysis
+    assert "win_edge" in analysis
+    # score_bands may be None when < 3 H2H games exist, which is the case for
+    # a fresh test DB — verify it is either None or a dict with expected keys.
+    if analysis["score_bands"] is not None:
+        assert "total" in analysis["score_bands"]
+        assert "p1" in analysis["score_bands"]
+        assert "p2" in analysis["score_bands"]
+    ppm = analysis["ppm_model"]
+    assert "total" in ppm
+    assert "p1" in ppm
+    assert "p2" in ppm
+    win_edge = analysis["win_edge"]
+    assert "favored" in win_edge
+    assert "edge_pct" in win_edge

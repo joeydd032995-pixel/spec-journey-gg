@@ -11,6 +11,7 @@ endpoint and the match stream name respectively.
 """
 from __future__ import annotations
 
+import statistics as _statistics
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -225,3 +226,29 @@ def build_schedule(events: Iterable[dict]) -> list[dict]:
             "status": g["status"], "division": g["division"],
         })
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Score prediction band                                                         #
+# --------------------------------------------------------------------------- #
+def score_band(scores: list[float], half_width: float = 0.5) -> dict | None:
+    """Compute a ±half_width·σ prediction band with empirical confidence.
+
+    Returns None when fewer than three data points are available, since a
+    meaningful standard deviation cannot be estimated from 0–2 samples.
+    """
+    if len(scores) < 3:
+        return None
+    mean = _statistics.mean(scores)
+    std = _statistics.stdev(scores)
+    low = mean - half_width * std
+    high = mean + half_width * std
+    in_band = sum(1 for s in scores if low <= s <= high)
+    return {
+        "mean": round(mean, 1),
+        "std": round(std, 1),
+        "low": round(low, 1),
+        "high": round(high, 1),
+        "confidence": round(in_band / len(scores) * 100, 1),
+        "n": len(scores),
+    }
