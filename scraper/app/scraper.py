@@ -8,6 +8,7 @@ and only imported on demand so the service runs without a browser installed.
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 
 from . import config, db, normalize
 from .client import H2HGGLClient
@@ -130,8 +131,8 @@ def build_upcoming_feed(days_schedule: int = 2, days_history: int = 60) -> dict:
 
     Args:
         days_schedule: How many days ahead to look for upcoming fixtures.
-        days_history:  Unused by the DB query (which uses the full archive), but
-                       recorded in meta for transparency.
+        days_history:  Only H2H games played within this many days are included in
+                       aggregate stats, score bands, and the PPM model.
 
     Returns a dict shaped as::
 
@@ -171,8 +172,9 @@ def build_upcoming_feed(days_schedule: int = 2, days_history: int = 60) -> dict:
         p1_card = _player_card(p1_stats_raw)
         p2_card = _player_card(p2_stats_raw)
 
-        # 3. Head-to-head history from the permanent archive.
-        h2h = db.head_to_head(p1_name, p2_name, limit=50)
+        # 3. Head-to-head history filtered to the requested history window.
+        since = (date.today() - timedelta(days=days_history)).isoformat()
+        h2h = db.head_to_head(p1_name, p2_name, limit=50, since_date=since)
 
         # 4. Extract score series from H2H recent list.
         recent = h2h.get("recent") or []
@@ -189,18 +191,20 @@ def build_upcoming_feed(days_schedule: int = 2, days_history: int = 60) -> dict:
                 "p2": normalize.score_band(p2_scores),
             }
 
-        # 6. PPM model.
-        p1_ppm = (p1_card["pts_per_match"] if p1_card and p1_card["pts_per_match"] is not None
-                  else 0.0)
-        p2_ppm = (p2_card["pts_per_match"] if p2_card and p2_card["pts_per_match"] is not None
-                  else 0.0)
-        ppm_total = round(p1_ppm + p2_ppm, 1)
+        # 6. PPM model — leave fields None when player data is unavailable.
+        p1_ppm = p1_card["pts_per_match"] if p1_card else None
+        p2_ppm = p2_card["pts_per_match"] if p2_card else None
         avg_total = h2h.get("avg_total")
-        vs_h2h_diff = round(ppm_total - avg_total, 1) if avg_total is not None else None
+        if p1_ppm is not None and p2_ppm is not None:
+            ppm_total: float | None = round(p1_ppm + p2_ppm, 1)
+            vs_h2h_diff = round(ppm_total - avg_total, 1) if avg_total is not None else None
+        else:
+            ppm_total = None
+            vs_h2h_diff = None
         ppm_model = {
             "total": ppm_total,
-            "p1": round(p1_ppm, 1),
-            "p2": round(p2_ppm, 1),
+            "p1": round(p1_ppm, 1) if p1_ppm is not None else None,
+            "p2": round(p2_ppm, 1) if p2_ppm is not None else None,
             "vs_h2h_diff": vs_h2h_diff,
         }
 
