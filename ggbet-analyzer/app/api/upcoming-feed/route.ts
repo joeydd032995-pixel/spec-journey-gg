@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isDefaultUrl } from "@/lib/h2hggl";
 
 export const maxDuration = 30;
 
@@ -20,15 +21,16 @@ function baseUrl(): string {
   return (process.env.H2HGGL_API_URL || DEFAULT_H2HGGL_URL).replace(/\/+$/, "");
 }
 
-function isDefaultUrl(): boolean {
-  const u = process.env.H2HGGL_API_URL ?? "";
-  return !u || u.includes("localhost");
+function parseBoundedInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const days    = parseInt(searchParams.get("days")    ?? "2",  10);
-  const history = parseInt(searchParams.get("history") ?? "60", 10);
+  const days    = parseBoundedInt(searchParams.get("days"),    2,  1,  14);
+  const history = parseBoundedInt(searchParams.get("history"), 60, 7, 90);
 
   if (isDefaultUrl()) {
     try {

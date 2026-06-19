@@ -25,15 +25,22 @@ const HEADERS = {
 
 async function apiGet(path: string, revalidate = 120): Promise<unknown> {
   const url = `${API_BASE}/${path.replace(/^\/+/, "")}`;
-  const res = await fetch(url, {
-    headers: HEADERS,
-    next: { revalidate },
-  } as RequestInit);
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: HEADERS,
+      next: { revalidate },
+    } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 async function fetchParticipants(): Promise<unknown[]> {
@@ -55,10 +62,16 @@ async function fetchScheduleDay(dateIso: string): Promise<unknown[]> {
   return Array.isArray(data) ? data : [];
 }
 
-/** Fetch multiple days concurrently. offsets = days relative to today (negative = past, positive = future). */
+/** Fetch multiple days, batched to 8 concurrent requests at a time. */
 async function fetchDays(offsets: number[]): Promise<unknown[]> {
-  const results = await Promise.all(offsets.map((i) => fetchScheduleDay(dayIso(i))));
-  return results.flat();
+  const results: unknown[] = [];
+  const batchSize = 8;
+  for (let i = 0; i < offsets.length; i += batchSize) {
+    const batch = offsets.slice(i, i + batchSize);
+    const chunk = await Promise.all(batch.map((d) => fetchScheduleDay(dayIso(d))));
+    results.push(...chunk.flat());
+  }
+  return results;
 }
 
 // ── Internal event shape (raw, before filtering) ─────────────────────────────

@@ -25,9 +25,15 @@ function baseUrl(): string {
   return (process.env.H2HGGL_API_URL || DEFAULT_H2HGGL_URL).replace(/\/+$/, "");
 }
 
-function isDefaultUrl(): boolean {
-  const u = process.env.H2HGGL_API_URL ?? "";
-  return !u || u.includes("localhost");
+export function isDefaultUrl(): boolean {
+  const raw = process.env.H2HGGL_API_URL?.trim();
+  if (!raw) return true;
+  try {
+    const hostname = new URL(raw).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
 }
 
 async function getJson(path: string): Promise<unknown> {
