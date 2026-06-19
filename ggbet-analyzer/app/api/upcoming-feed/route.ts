@@ -3,11 +3,11 @@
  *
  * GET /api/upcoming-feed?days=2&history=60
  *
- * Proxies to the self-hosted H2H GG League scraper at {H2HGGL_API_URL}/api/upcoming-feed.
- * Returns the scraper's JSON unchanged:
- *   { upcoming: UpcomingGame[], meta: { source, count, days_schedule, days_history, fetched } }
+ * When no real scraper URL is configured (H2HGGL_API_URL unset or localhost),
+ * builds the upcoming-feed card data directly from the h2hggl/hudstats API.
+ * Otherwise proxies to the self-hosted scraper at {H2HGGL_API_URL}/api/upcoming-feed.
  *
- * Responds with 502 if the scraper is unreachable.
+ * Returns: { upcoming: UpcomingGame[], meta: { source, count, days_schedule, days_history, fetched } }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -20,12 +20,28 @@ function baseUrl(): string {
   return (process.env.H2HGGL_API_URL || DEFAULT_H2HGGL_URL).replace(/\/+$/, "");
 }
 
+function isDefaultUrl(): boolean {
+  const u = process.env.H2HGGL_API_URL ?? "";
+  return !u || u.includes("localhost");
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const days    = searchParams.get("days")    ?? "2";
-  const history = searchParams.get("history") ?? "60";
+  const days    = parseInt(searchParams.get("days")    ?? "2",  10);
+  const history = parseInt(searchParams.get("history") ?? "60", 10);
 
-  const url = `${baseUrl()}/api/upcoming-feed?days=${encodeURIComponent(days)}&history=${encodeURIComponent(history)}`;
+  if (isDefaultUrl()) {
+    try {
+      const { buildUpcomingFeedDirect } = await import("@/lib/h2hggl-direct");
+      const data = await buildUpcomingFeedDirect(days, history);
+      return NextResponse.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
+
+  const url = `${baseUrl()}/api/upcoming-feed?days=${encodeURIComponent(String(days))}&history=${encodeURIComponent(String(history))}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
@@ -35,7 +51,7 @@ export async function GET(req: NextRequest) {
       signal: controller.signal,
       headers: { Accept: "application/json", "User-Agent": "GGBetAnalyzer/1.0" },
       next: { revalidate: 0 },
-    });
+    } as RequestInit);
 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => "");
