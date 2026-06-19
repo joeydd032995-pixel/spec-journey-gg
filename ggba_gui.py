@@ -668,7 +668,7 @@ class App:
         def done(result: tuple) -> None:
             players, h2h = result
             try:
-                text = _matchup_text(p1, p2, days, players, h2h)
+                text, _snapshot = _matchup_text(p1, p2, days, players, h2h)
             except Exception as exc:
                 text = f"Error building analysis: {exc}"
             self._sched_show_analysis(text)
@@ -957,7 +957,7 @@ def _line_comparison_text(snap: dict,
     lines = [
         sep,
         f"  SCORE LINE COMPARISON  —  {snap['p1']} vs {snap['p2']}",
-        f"  (Model data unchanged — this is a read-only overlay)",
+        "  (Model data unchanged — this is a read-only overlay)",
         sep,
         f"\n  {'Metric':<22} {'Model Avg':>10}  {'O/U Line':>10}  {'Diff':>8}  {'Edge'}",
         f"  {'─' * 58}",
@@ -1004,16 +1004,16 @@ def _line_comparison_text(snap: dict,
 
     if snap.get("ppm_total") and line_total:
         ppm_diff = line_total - snap["ppm_total"]
-        lines.append(f"\n  PPM Projection vs Line:")
-        lines.append(f"  {'─' * 40}")
+        lines.append("\n  PPM Projection vs Line:")
+        lines.append("  " + "─" * 40)
         lines.append(f"  PPM Total:  {snap['ppm_total']:.1f}   Line: {line_total:.1f}   "
                      f"Diff: {ppm_diff:+.1f}")
         if ppm_diff > 5:
-            lines.append(f"  → Line is set ABOVE PPM model — slight under lean from season stats")
+            lines.append("  → Line is set ABOVE PPM model — slight under lean from season stats")
         elif ppm_diff < -5:
-            lines.append(f"  → Line is set BELOW PPM model — slight over lean from season stats")
+            lines.append("  → Line is set BELOW PPM model — slight over lean from season stats")
         else:
-            lines.append(f"  → Line aligns with PPM model — no strong seasonal edge")
+            lines.append("  → Line aligns with PPM model — no strong seasonal edge")
 
     lines.append(f"\n  {'─' * 58}")
     lines.append("  CONSENSUS:")
