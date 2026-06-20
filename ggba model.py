@@ -254,21 +254,27 @@ class OnlineRatings:
 # walk-forward backtest + calibration (leakage-free)                          #
 # --------------------------------------------------------------------------- #
 def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp=10,
-                 formCoef=0.0, warmCoef=0.0):
+                 formCoef=0.0, warmCoef=0.0, matchCoef=0.0, biasOffset=0.0, hourCoef=0.0):
     """games: list of dicts with player1,player2,p1_team,p2_team,score1,score2,
     p1_gp,p2_gp (chronological). Returns rows [{proj,sigma,actual}] for both the
     rated model and a raw-ppm baseline, leakage-free.
 
-    formCoef: points added per unit of combined form score (form_score in [-1,1] each).
-    warmCoef: blend weight for API-reported ppm (0 = online-only, 1 = ppm-only).
+    formCoef:   points added per unit of combined form score (form_score in [-1,1] each).
+    warmCoef:   blend weight for API-reported ppm (0 = online-only, 1 = ppm-only).
+    matchCoef:  blend weight for matchup-specific running average (0 = off, requires min 3 prior games).
+    biasOffset: fixed pts added to every prediction (negative = conservative under-projection).
+    hourCoef:   amplitude of sinusoidal time-of-day adjustment (peak ≈ 13:00 UTC, trough ≈ 01:00 UTC).
     """
     R = OnlineRatings(etaP, etaT, decay)
     ppm_pts, ppm_n = {}, {}
+    match_pts: dict = {}   # (A,B) canonical pair → cumulative actual total
+    match_n: dict = {}
     rated_rows, base_rows = [], []
     for g in games:
         A, B = g["player1"], g["player2"]
         TA, TB = g.get("p1_team", "") or "", g.get("p2_team", "") or ""
         actual = _num(g["actual_total"]) if g.get("actual_total") not in (None, "") else _num(g["score1"]) + _num(g["score2"])
+        key = (A, B) if A < B else (B, A)
         _, _, rate_total = R.predict(A, TA, B, TB)
         bA = ppm_pts.get(A, 0) / ppm_n[A] if ppm_n.get(A) else None
         bB = ppm_pts.get(B, 0) / ppm_n[B] if ppm_n.get(B) else None
@@ -283,6 +289,15 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
                 api_b = _num(g.get("p2_ppm", 0))
                 if api_a > 0 and api_b > 0:
                     rp = (1.0 - warmCoef) * rp + warmCoef * (api_a + api_b)
+            if matchCoef != 0.0 and match_n.get(key, 0) >= 3:
+                match_avg = match_pts[key] / match_n[key]
+                rp = (1.0 - matchCoef) * rp + matchCoef * match_avg
+            if hourCoef != 0.0:
+                h = _num(g.get("hour_utc", 13.0))
+                # Sinusoidal: +1 at 13:00 UTC (daytime peak), -1 at 01:00 UTC (overnight trough)
+                rp = rp + hourCoef * math.sin(2.0 * math.pi * (h - 13.0) / 24.0)
+            if biasOffset != 0.0:
+                rp = rp + biasOffset
             rp = round(rp, 1)
             rated_rows.append({"proj": rp, "sigma": math.sqrt(max(rp, 1) * dispersion), "actual": actual})
             base_rows.append({"proj": round(bA + bB, 1), "sigma": math.sqrt(max(bA + bB, 1) * dispersion), "actual": actual})
@@ -290,6 +305,8 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
         R.update(A, TA, B, TB, _num(g["score1"]), _num(g["score2"]))
         ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"]); ppm_n[A] = ppm_n.get(A, 0) + 1
         ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"]); ppm_n[B] = ppm_n.get(B, 0) + 1
+        match_pts[key] = match_pts.get(key, 0) + actual
+        match_n[key] = match_n.get(key, 0) + 1
     return rated_rows, base_rows, R
 
 

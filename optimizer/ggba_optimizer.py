@@ -66,6 +66,9 @@ PARAM_SPACE: Dict[str, Tuple[float, float]] = {
     'edge':       (0.01, 0.08),   # edge threshold
     'formCoef':   (0.0,  6.0),    # points per unit of combined form score
     'warmCoef':   (0.0,  0.75),   # PPM warm-start blend weight
+    'matchCoef':  (0.0,  0.80),   # matchup-specific history blend weight
+    'biasOffset': (-6.0, 0.0),    # fixed pts added to every prediction (≤ 0 = conservative)
+    'hourCoef':   (0.0,  8.0),    # amplitude of time-of-day sinusoidal adjustment
 }
 
 # Default min_gp — model needs this many games before a player is rated
@@ -286,6 +289,9 @@ def objective(
     edge       = p['edge']
     formCoef   = p['formCoef']
     warmCoef   = p['warmCoef']
+    matchCoef  = p['matchCoef']
+    biasOffset = p['biasOffset']
+    hourCoef   = p['hourCoef']
 
     # Train the model on fold_train (state is captured in the returned model object)
     # We run walk_forward over the combined train+val sequence but we only
@@ -303,6 +309,9 @@ def objective(
             min_gp=_DEFAULT_MIN_GP,
             formCoef=formCoef,
             warmCoef=warmCoef,
+            matchCoef=matchCoef,
+            biasOffset=biasOffset,
+            hourCoef=hourCoef,
         )
     except Exception:
         return 1e9  # degenerate params
@@ -339,6 +348,9 @@ def objective(
             min_gp=_DEFAULT_MIN_GP,
             formCoef=formCoef,
             warmCoef=warmCoef,
+            matchCoef=matchCoef,
+            biasOffset=biasOffset,
+            hourCoef=hourCoef,
         )
         n_train_rated = len(train_rated)
     except Exception:
@@ -571,6 +583,9 @@ def final_evaluation(
             min_gp=_DEFAULT_MIN_GP,
             formCoef=p.get('formCoef', 0.0),
             warmCoef=p.get('warmCoef', 0.0),
+            matchCoef=p.get('matchCoef', 0.0),
+            biasOffset=p.get('biasOffset', 0.0),
+            hourCoef=p.get('hourCoef', 0.0),
         )
     except Exception as exc:
         return {'error': str(exc)}
