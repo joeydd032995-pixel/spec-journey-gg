@@ -324,12 +324,9 @@ def weighted_hybrid_loss(rows, w_huber=0.5, w_logcosh=0.3, w_mae=0.2) -> float:
 def verify_loss_consistency(rows, tol=2.0) -> dict:
     """Cross-verification: all three losses should be within `tol` of each other on same data.
 
-    The three loss functions (Huber, Log-Cosh, Hybrid) operate on different
-    scales by design.  ``consistent`` is therefore defined as:
-      max_spread / max(vals) <= tol
-    i.e. the relative spread among the three values must be < tol (default 2.0,
-    meaning the largest value is at most 3x the smallest).  An absolute
-    max_spread is also returned for inspection.
+    ``consistent`` is defined as (max(vals) / min(vals)) - 1 <= tol, so with
+    default tol=2.0 the largest value may be at most 3x the smallest.
+    When min(vals)==0 and max(vals)>0, consistency is treated as failed.
 
     Returns {'consistent': bool, 'huber': float, 'log_cosh': float, 'hybrid': float, 'max_spread': float}"""
     h = huber_loss(rows)
@@ -337,9 +334,15 @@ def verify_loss_consistency(rows, tol=2.0) -> dict:
     hy = weighted_hybrid_loss(rows)
     vals = [h, lc, hy]
     max_val = max(vals)
-    max_spread = max_val - min(vals)
-    # Use relative spread so the check is scale-invariant across loss families.
-    relative_spread = (max_spread / max_val) if max_val > 0 else 0.0
+    min_val = min(vals)
+    max_spread = max_val - min_val
+    # Relative spread: (max/min) - 1 so consistent means max is at most (1+tol)x min.
+    if min_val > 0:
+        relative_spread = (max_val / min_val) - 1.0
+    elif max_val == 0:
+        relative_spread = 0.0
+    else:
+        relative_spread = float("inf")
     return {
         "consistent": relative_spread <= tol,
         "huber": h,

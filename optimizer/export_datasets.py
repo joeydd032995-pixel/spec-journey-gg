@@ -76,14 +76,29 @@ class _Client:
         )
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        """GET *path* with polite rate-limiting; raises on HTTP errors."""
-        gap = POLITE_DELAY_S - (time.time() - self._last)
-        if gap > 0:
-            time.sleep(gap)
-        resp = self._http.get(f"{API_BASE}/{path.lstrip('/')}", params=params)
-        self._last = time.time()
-        resp.raise_for_status()
-        return resp.json()
+        """GET *path* with rate-limiting and exponential backoff for transient errors."""
+        url = f"{API_BASE}/{path.lstrip('/')}"
+        for attempt in range(4):
+            gap = POLITE_DELAY_S - (time.time() - self._last)
+            if gap > 0:
+                time.sleep(gap)
+            try:
+                resp = self._http.get(url, params=params)
+                self._last = time.time()
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+                    time.sleep(2 ** attempt)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError:
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+            except httpx.HTTPError:
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+        raise RuntimeError("unreachable")
 
     def participants(self) -> list[dict]:
         """Return all participant records with full season stats."""
@@ -286,15 +301,25 @@ def export_combo(
     gp: int,
     days: int,
     out_dir: str,
+    season_gp: dict[str, int] | None = None,
 ) -> str:
     """
-    Filter *wf_rows* to rows where both players have gp >= *gp*, write a CSV,
-    and return the output file path.
+    Filter *wf_rows* to rows where both players have effective GP >= *gp*,
+    write a CSV, and return the output file path.
+
+    Effective GP = max(in-window GP, season GP) so players with enough full-season
+    games qualify even if the rolling window captured fewer completed games.
     """
+    sgp = season_gp or {}
+
+    def _eff_gp(row: dict, player_key: str, gp_key: str) -> int:
+        raw = row.get(gp_key, 0)
+        raw_int = int(raw) if isinstance(raw, (int, float)) else 0
+        return max(raw_int, sgp.get(str(row.get(player_key, "")), 0))
+
     filtered = [
         r for r in wf_rows
-        if isinstance(r["p1_gp"], int) and isinstance(r["p2_gp"], int)
-        and r["p1_gp"] >= gp and r["p2_gp"] >= gp
+        if _eff_gp(r, "player1", "p1_gp") >= gp and _eff_gp(r, "player2", "p2_gp") >= gp
     ]
     fname = f"walkforward_gp{gp}_days{days}.csv"
     path = os.path.join(out_dir, fname)
@@ -348,7 +373,7 @@ def fetch_and_export(gp: int, days: int, out_dir: str) -> str:
     wf_rows = _build_walkforward(games, season_gp=season_gp)
 
     os.makedirs(out_dir, exist_ok=True)
-    return export_combo(wf_rows, gp, days, out_dir)
+    return export_combo(wf_rows, gp, days, out_dir, season_gp=season_gp)
 
 
 def fetch_all_days(days: int) -> tuple[list[dict], dict[str, int]]:
@@ -422,7 +447,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         games, season_gp = fetch_all_days(days)
         wf_rows = _build_walkforward(games, season_gp=season_gp)
         for gp in GP_BUCKETS:
-            export_combo(wf_rows, gp, days, OUTPUT_DIR)
+            export_combo(wf_rows, gp, days, OUTPUT_DIR, season_gp=season_gp)
         print()
 
     print(f"All {total} exports complete.")
@@ -478,8 +503,12 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.all:
+        if args.days is not None:
+            print("warning: --days is ignored in --all mode (all day windows are exported)", file=sys.stderr)
         cmd_all(args)
     elif args.list:
+        if args.days is not None:
+            print("warning: --days is ignored in --list mode", file=sys.stderr)
         cmd_list(args)
     elif args.gp is not None:
         if args.days is None:

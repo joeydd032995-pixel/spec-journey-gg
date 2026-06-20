@@ -22,7 +22,7 @@ from ggba_model import (  # noqa: F401
 # brier  : Brier score — lower is better (target: ≤ 1.68)
 # ece    : Expected Calibration Error — lower is better (target: ≤ 0.019)
 # mae    : Mean Absolute Error in points — lower is better (target: ≤ 7.0)
-# bias_max : Maximum allowed model bias (projection − actual) — target: ≤ −4.0
+# bias_max : Maximum allowed model bias (projection - actual) -- target: <= -4.0
 #            (negative means the model under-projects, which is acceptable;
 #             we flag when bias is worse / more positive than this threshold)
 METRIC_TARGETS: dict[str, float] = {
