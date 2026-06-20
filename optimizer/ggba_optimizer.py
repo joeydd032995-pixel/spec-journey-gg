@@ -64,6 +64,8 @@ PARAM_SPACE: Dict[str, Tuple[float, float]] = {
     'decay':      (0.0,  0.05),   # recency decay
     'dispersion': (0.80, 2.00),   # sigma multiplier
     'edge':       (0.01, 0.08),   # edge threshold
+    'formCoef':   (0.0,  6.0),    # points per unit of combined form score
+    'warmCoef':   (0.0,  0.75),   # PPM warm-start blend weight
 }
 
 # Default min_gp — model needs this many games before a player is rated
@@ -282,6 +284,8 @@ def objective(
     decay      = p['decay']
     dispersion = p['dispersion']
     edge       = p['edge']
+    formCoef   = p['formCoef']
+    warmCoef   = p['warmCoef']
 
     # Train the model on fold_train (state is captured in the returned model object)
     # We run walk_forward over the combined train+val sequence but we only
@@ -297,6 +301,8 @@ def objective(
             decay=decay,
             dispersion=dispersion,
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=formCoef,
+            warmCoef=warmCoef,
         )
     except Exception:
         return 1e9  # degenerate params
@@ -331,6 +337,8 @@ def objective(
             decay=decay,
             dispersion=dispersion,
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=formCoef,
+            warmCoef=warmCoef,
         )
         n_train_rated = len(train_rated)
     except Exception:
@@ -561,6 +569,8 @@ def final_evaluation(
             decay=p['decay'],
             dispersion=p['dispersion'],
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=p.get('formCoef', 0.0),
+            warmCoef=p.get('warmCoef', 0.0),
         )
     except Exception as exc:
         return {'error': str(exc)}

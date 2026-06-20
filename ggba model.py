@@ -253,10 +253,15 @@ class OnlineRatings:
 # --------------------------------------------------------------------------- #
 # walk-forward backtest + calibration (leakage-free)                          #
 # --------------------------------------------------------------------------- #
-def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp=10):
+def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp=10,
+                 formCoef=0.0, warmCoef=0.0):
     """games: list of dicts with player1,player2,p1_team,p2_team,score1,score2,
     p1_gp,p2_gp (chronological). Returns rows [{proj,sigma,actual}] for both the
-    rated model and a raw-ppm baseline, leakage-free."""
+    rated model and a raw-ppm baseline, leakage-free.
+
+    formCoef: points added per unit of combined form score (form_score in [-1,1] each).
+    warmCoef: blend weight for API-reported ppm (0 = online-only, 1 = ppm-only).
+    """
     R = OnlineRatings(etaP, etaT, decay)
     ppm_pts, ppm_n = {}, {}
     rated_rows, base_rows = [], []
@@ -269,7 +274,16 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
         bB = ppm_pts.get(B, 0) / ppm_n[B] if ppm_n.get(B) else None
         gp_ok = min(_num(g.get("p1_gp", ppm_n.get(A, 0))), _num(g.get("p2_gp", ppm_n.get(B, 0)))) >= min_gp
         if gp_ok and bA is not None and bB is not None:
-            rp = round(rate_total, 1)
+            rp = rate_total
+            if formCoef != 0.0:
+                fs = form_score(g.get("p1_form", "")) + form_score(g.get("p2_form", ""))
+                rp = rp + formCoef * fs
+            if warmCoef != 0.0:
+                api_a = _num(g.get("p1_ppm", 0))
+                api_b = _num(g.get("p2_ppm", 0))
+                if api_a > 0 and api_b > 0:
+                    rp = (1.0 - warmCoef) * rp + warmCoef * (api_a + api_b)
+            rp = round(rp, 1)
             rated_rows.append({"proj": rp, "sigma": math.sqrt(max(rp, 1) * dispersion), "actual": actual})
             base_rows.append({"proj": round(bA + bB, 1), "sigma": math.sqrt(max(bA + bB, 1) * dispersion), "actual": actual})
         # update AFTER (leakage-free)
