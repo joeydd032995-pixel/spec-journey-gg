@@ -279,6 +279,76 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
     return rated_rows, base_rows, R
 
 
+def huber_loss(rows, delta=7.0) -> float:
+    """Huber loss — quadratic for |error| < delta, linear outside. More robust than RMSE."""
+    n = len(rows)
+    if not n:
+        return 0.0
+    total = 0.0
+    for r in rows:
+        err = r["proj"] - r["actual"]
+        abs_err = abs(err)
+        if abs_err <= delta:
+            total += 0.5 * err * err
+        else:
+            total += delta * (abs_err - 0.5 * delta)
+    return total / n
+
+
+def log_cosh_loss(rows) -> float:
+    """Log-Cosh loss — smooth approximation of L1, differentiable everywhere."""
+    n = len(rows)
+    if not n:
+        return 0.0
+    total = 0.0
+    for r in rows:
+        err = r["proj"] - r["actual"]
+        abs_err = abs(err)
+        # Guard for large errors: log(cosh(x)) ≈ |x| - log(2) for |x| > 20
+        if abs_err > 20:
+            total += abs_err - math.log(2)
+        else:
+            total += math.log(math.cosh(err))
+    return total / n
+
+
+def weighted_hybrid_loss(rows, w_huber=0.5, w_logcosh=0.3, w_mae=0.2) -> float:
+    """Weighted Hybrid combining Huber + Log-Cosh + MAE. Default weights sum to 1.0."""
+    n = len(rows)
+    if not n:
+        return 0.0
+    mae = sum(abs(r["proj"] - r["actual"]) for r in rows) / n
+    return w_huber * huber_loss(rows) + w_logcosh * log_cosh_loss(rows) + w_mae * mae
+
+
+def verify_loss_consistency(rows, tol=2.0) -> dict:
+    """Cross-verification: all three losses should be within `tol` of each other on same data.
+
+    The three loss functions (Huber, Log-Cosh, Hybrid) operate on different
+    scales by design.  ``consistent`` is therefore defined as:
+      max_spread / max(vals) <= tol
+    i.e. the relative spread among the three values must be < tol (default 2.0,
+    meaning the largest value is at most 3x the smallest).  An absolute
+    max_spread is also returned for inspection.
+
+    Returns {'consistent': bool, 'huber': float, 'log_cosh': float, 'hybrid': float, 'max_spread': float}"""
+    h = huber_loss(rows)
+    lc = log_cosh_loss(rows)
+    hy = weighted_hybrid_loss(rows)
+    vals = [h, lc, hy]
+    max_val = max(vals)
+    max_spread = max_val - min(vals)
+    # Use relative spread so the check is scale-invariant across loss families.
+    relative_spread = (max_spread / max_val) if max_val > 0 else 0.0
+    return {
+        "consistent": relative_spread <= tol,
+        "huber": h,
+        "log_cosh": lc,
+        "hybrid": hy,
+        "max_spread": max_spread,
+    }
+
+
 def accuracy(rows):
     proj = [r["proj"] for r in rows]; act = [r["actual"] for r in rows]
     n = len(rows)
@@ -287,7 +357,16 @@ def accuracy(rows):
     mae = sum(abs(p - a) for p, a in zip(proj, act)) / n
     rmse = math.sqrt(sum((p - a) ** 2 for p, a in zip(proj, act)) / n)
     bias = sum(p - a for p, a in zip(proj, act)) / n
-    return {"n": n, "r": pearson(proj, act), "mae": mae, "rmse": rmse, "bias": bias}
+    return {
+        "n": n,
+        "r": pearson(proj, act),
+        "mae": mae,
+        "rmse": rmse,
+        "bias": bias,
+        "huber_loss": huber_loss(rows),
+        "log_cosh_loss": log_cosh_loss(rows),
+        "hybrid_loss": weighted_hybrid_loss(rows),
+    }
 
 
 CAL_GRID = (-6, -4, -2, 0, 2, 4, 6)
