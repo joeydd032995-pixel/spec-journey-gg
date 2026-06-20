@@ -76,7 +76,11 @@ class _Client:
         )
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        """GET *path* with rate-limiting and exponential backoff for transient errors."""
+        """GET *path* with rate-limiting and exponential backoff for transient server errors.
+
+        4xx client errors (including 400 "date out of range") are raised immediately
+        without retry; only 429/5xx transient errors are retried.
+        """
         url = f"{API_BASE}/{path.lstrip('/')}"
         for attempt in range(4):
             gap = POLITE_DELAY_S - (time.time() - self._last)
@@ -85,13 +89,17 @@ class _Client:
             try:
                 resp = self._http.get(url, params=params)
                 self._last = time.time()
+                # Raise immediately on 4xx — client errors are not transient.
+                if 400 <= resp.status_code < 500:
+                    resp.raise_for_status()
+                # 5xx and 429: retry with backoff.
                 if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
                     time.sleep(2 ** attempt)
                     continue
                 resp.raise_for_status()
                 return resp.json()
-            except httpx.HTTPStatusError:
-                if attempt == 3:
+            except httpx.HTTPStatusError as e:
+                if 400 <= e.response.status_code < 500 or attempt == 3:
                     raise
                 time.sleep(2 ** attempt)
             except httpx.HTTPError:
@@ -106,10 +114,15 @@ class _Client:
         return data if isinstance(data, list) else []
 
     def schedule_day(self, day: datetime) -> list[dict]:
-        """Return fixtures for a single UTC calendar day."""
+        """Return fixtures for a single UTC calendar day, or [] if date is out of API range."""
         iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
-        data = self._get(f"schedule/{SPORT}", params={"date": iso})
-        return data if isinstance(data, list) else []
+        try:
+            data = self._get(f"schedule/{SPORT}", params={"date": iso})
+            return data if isinstance(data, list) else []
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                return []  # API window exceeded — treat as no data
+            raise
 
     def schedule_range(self, days: int) -> list[dict]:
         """Collect *days* daily schedules going backward, starting from yesterday.
