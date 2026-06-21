@@ -9,15 +9,16 @@ Pulls live data from h2hggl.com's open JSON API — **no auth, no API key, no se
 
 | Path | What it is |
 |------|-----------|
-| `ggba_gui.py` | **Standalone desktop app** — tkinter GUI with six tabs (Players, Standings, H2H, Matchup, Analyze, Export). No server needed. |
+| `ggba_gui.py` | **Standalone desktop app** — tkinter GUI with seven tabs (Players, Standings, H2H, Matchup, Schedule, Analyze, Export). No server needed. |
 | `ggba_h2hggl.py` | **Standalone CLI** — same data, terminal output. One dependency: `httpx`. |
 | `build_exe.bat` | One-click Windows build script (PyInstaller → `dist/H2H_GG_Analyzer.exe`). |
 | `ggba_gui.spec` | PyInstaller spec for the above. |
 | `scraper/` | Advanced: FastAPI + SQLite data service (Dockerized). |
-| `ggbet-analyzer/` | Advanced: Next.js analytics dashboard (calls the scraper). |
+| `ggbet-analyzer/` | Advanced: Next.js analytics dashboard — works on Vercel with no backend (direct API mode). |
+| `optimizer/` | Champion/challenger optimizer pipeline — walk-forward calibration, drift monitoring, APScheduler automation. |
 | `GGBetAnalyzer.ts` | Original standalone React artifact (single-file, browser-only). |
 | `ggba betsapi.py` | Python bulk-fetch script for BetsAPI (requires paid token). |
-| `ggba model.py` | Offline Python walk-forward backtester. |
+| `ggba model.py` | Offline Python walk-forward backtester + loss functions. |
 
 ---
 
@@ -92,7 +93,8 @@ Requires Python + pip to be on your PATH. The script installs PyInstaller and `h
 | **Players** | Full roster with GP, Win%, PPM, FG%, Steals, Fouls. Filter by name or minimum games played. |
 | **Standings** | League table ranked by win percentage. |
 | **H2H** | Head-to-head record between two players. Select a matchup from the dropdown, choose a date range, and click **Load H2H**. |
-| **Matchup** | Full matchup analysis: individual stats, **Score Prediction Bands** (±0.5σ tight band with empirical confidence for Total/Home/Away), **PPM Model** (season averages vs H2H averages), win%-based edge, and the last 25 H2H games. |
+| **Matchup** | Full matchup analysis: individual stats, **Score Prediction Bands** (±0.5σ tight band with empirical confidence for Total/Home/Away), **PPM Model** (season averages vs H2H averages), win%-based edge, and the last 25 H2H games. Enter a posted O/U line to get a **What If** overlay with LEAN OVER/UNDER/PUSH verdicts and σ distance. |
+| **Schedule** | Upcoming fixtures fetched from the live API (configurable days-ahead). Select a game and click **Analyze Selected** to run a full matchup analysis directly from the schedule. |
 | **Analyze** | Walk-forward model accuracy summary over a configurable day range. |
 | **Export** | Save all data (players, standings, schedule, H2H games, walk-forward) to CSV files in `./ggba_data/`. |
 
@@ -123,6 +125,28 @@ The output shows two separate sections side-by-side in the result pane:
 
 - **Score Prediction Bands** — empirical ±0.5σ range based on actual H2H games. Confidence = fraction of past games that landed inside the band.
 - **PPM Model** — season-average points-per-match for each player, compared against their H2H average. A positive Diff means the season PPM is tracking above their H2H history.
+
+### Using the What If O/U overlay
+
+After running a matchup analysis, an O/U line input row appears below the report. Enter the sportsbook's posted Total, Home, and Away lines and press **Compare**. The overlay shows:
+
+```
+  What If — O/U Line Comparison
+  ──────────────────────────────────────────────────────────────────
+               Posted    Model    σ-dist   Band          Verdict
+  Total        215.5     214.3    −0.07σ   [205–223]     PUSH
+  Home         113.0     112.1    −0.09σ   [107–117]     LEAN UNDER
+  Away         104.5     102.2    −0.20σ   [ 97–108]     LEAN UNDER
+
+  CONSENSUS: Slight lean UNDER
+```
+
+### Using the Schedule tab
+
+1. Open the **Schedule** tab.
+2. Adjust **Days ahead** (default 3) and click **Refresh** to load upcoming fixtures.
+3. Click any row in the table to select it.
+4. Adjust **History days** if needed, then click **Analyze Selected** to run a full matchup report in the panel below.
 
 ---
 
@@ -186,12 +210,16 @@ pyinstaller ggba_gui.spec
 
 ## Advanced: Web Dashboard
 
-The repo also contains a full web stack for more advanced analytics. This is optional — the GUI and CLI above cover the same data without any server.
+The repo also contains a full Next.js web stack for more advanced analytics. This is optional — the GUI and CLI above cover the same data without any server.
 
-**Requirements:** Python 3.11+, Node.js 18+
+The dashboard has a **direct API mode**: when `H2HGGL_API_URL` is unset (the default), the Next.js app fetches data directly from the hudstats API in TypeScript (`lib/h2hggl-direct.ts`) with no Python backend required. This is how the Vercel preview deployment works.
+
+**Dashboard tabs:** Data Manager, Players, Standings, H2H, Matchup, **Upcoming Games** (pre-computed H2H analysis for all scheduled fixtures).
+
+**Requirements (local dev with Python scraper):** Python 3.11+, Node.js 18+
 
 ```bash
-# Terminal 1 — start the data service
+# Terminal 1 — start the data service (optional — skip for direct mode)
 cd scraper
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -200,11 +228,12 @@ uvicorn app.main:app --port 8000
 # Terminal 2 — start the dashboard
 cd ggbet-analyzer
 npm install
+# Optional: point to local scraper
 echo "H2HGGL_API_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 
-Open **http://localhost:3000** → Data Manager → "Fetch live data".
+Open **http://localhost:3000**. In direct mode the Upcoming Games tab pre-fetches all scheduled matches and shows full H2H analysis without any extra setup.
 
 For Docker, Vercel deployment, and full configuration, see **[SETUP.md](SETUP.md)**.
 
@@ -223,6 +252,67 @@ For Docker, Vercel deployment, and full configuration, see **[SETUP.md](SETUP.md
 | `GET /api/history?limit=200` | Permanent game archive |
 
 Scraper-specific docs: [`scraper/README.md`](scraper/README.md)
+
+---
+
+## GGBA Optimizer Pipeline
+
+The `optimizer/` package is a champion/challenger hyperparameter optimization system for the walk-forward model. It runs offline and is independent of the GUI and web dashboard.
+
+```bash
+pip install httpx apscheduler scipy
+```
+
+### Quick start
+
+```bash
+# Export walk-forward CSVs (36 combinations: 6 GP buckets × 6 day windows)
+python3 optimizer/export_datasets.py --all
+
+# Run optimizer and set initial champion
+python3 optimizer/pipeline.py optimize --csv ggba_data/walkforward_gp10_days56.csv
+
+# Check system status
+python3 optimizer/pipeline.py status
+
+# Start full scheduler (4am daily eval + 30-min monitoring)
+python3 optimizer/pipeline.py schedule
+```
+
+### Subcommands
+
+| Subcommand | What it does |
+|------------|-------------|
+| `export` | Export walk-forward CSVs (`--gp N --days N`, or `--all` for all 36) |
+| `optimize` | Run optimizer and update champion |
+| `shadow` | Shadow-mode predictions and live stats |
+| `monitor` | Run one monitoring cycle |
+| `schedule` | Start APScheduler background jobs |
+| `status` | Print champion, queue, shadow stats |
+| `test` | End-to-end test (`--quick` for fast run) |
+
+### How it works
+
+1. **Walk-forward folds** — expanding-window backtesting, no future leakage.
+2. **Bayesian + random search** — L-BFGS-B over a configurable param grid.
+3. **Champion/challenger gating** — a challenger is only promoted if it clears all gates: ROI improvement ≥ 2%, MAE improvement ≥ 0.2 pts, trade count ≥ 50, ECE/Brier within tolerance, bootstrap win rate ≥ 60%.
+4. **Shadow mode** — champion and challenger each generate predictions on live games; outcomes are logged to `optimizer/shadow_log.db`.
+5. **Monitoring** — rolling 7-day EV, hit rate, calibration drift (ECE), and KS distribution shift are checked every 30 minutes; breach triggers an automatic retrain job.
+6. **Scheduler** — APScheduler cron job at 4:00 AM UTC runs the full optimize → gate → promote/reject cycle.
+
+### Metric targets (champion v4)
+
+| Metric | Value | Target |
+|--------|-------|--------|
+| Brier Score | 0.188 | ≤ 1.68 |
+| ECE | 0.018 | ≤ 0.019 |
+| MAE | 9.28 pts | ≤ 9.5 pts |
+| Betting offset | −4.0 | ≤ −4.0 |
+| Correlation (r) | 0.557 | ≥ 0.55 |
+
+Targets are calibrated to the theoretical limits of the data (between-pair σ = 9.94, within-pair σ = 10.50): MAE floor ≈ 8.38 pts, max achievable r ≈ 0.694.
+
+See [`optimizer/README.md`](optimizer/README.md) for environment variables and full configuration.
 
 ---
 
