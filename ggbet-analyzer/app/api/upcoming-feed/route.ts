@@ -3,14 +3,15 @@
  *
  * GET /api/upcoming-feed?days=2&history=60
  *
- * Proxies to the self-hosted H2H GG League scraper at {H2HGGL_API_URL}/api/upcoming-feed.
- * Returns the scraper's JSON unchanged:
- *   { upcoming: UpcomingGame[], meta: { source, count, days_schedule, days_history, fetched } }
+ * When no real scraper URL is configured (H2HGGL_API_URL unset or localhost),
+ * builds the upcoming-feed card data directly from the h2hggl/hudstats API.
+ * Otherwise proxies to the self-hosted scraper at {H2HGGL_API_URL}/api/upcoming-feed.
  *
- * Responds with 502 if the scraper is unreachable.
+ * Returns: { upcoming: UpcomingGame[], meta: { source, count, days_schedule, days_history, fetched } }
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isDefaultUrl } from "@/lib/h2hggl";
 
 export const maxDuration = 30;
 
@@ -20,12 +21,29 @@ function baseUrl(): string {
   return (process.env.H2HGGL_API_URL || DEFAULT_H2HGGL_URL).replace(/\/+$/, "");
 }
 
+function parseBoundedInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const days    = searchParams.get("days")    ?? "2";
-  const history = searchParams.get("history") ?? "60";
+  const days    = parseBoundedInt(searchParams.get("days"),    2,  1,  14);
+  const history = parseBoundedInt(searchParams.get("history"), 60, 7, 90);
 
-  const url = `${baseUrl()}/api/upcoming-feed?days=${encodeURIComponent(days)}&history=${encodeURIComponent(history)}`;
+  if (isDefaultUrl()) {
+    try {
+      const { buildUpcomingFeedDirect } = await import("@/lib/h2hggl-direct");
+      const data = await buildUpcomingFeedDirect(days, history);
+      return NextResponse.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
+
+  const url = `${baseUrl()}/api/upcoming-feed?days=${encodeURIComponent(String(days))}&history=${encodeURIComponent(String(history))}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
@@ -35,7 +53,7 @@ export async function GET(req: NextRequest) {
       signal: controller.signal,
       headers: { Accept: "application/json", "User-Agent": "GGBetAnalyzer/1.0" },
       next: { revalidate: 0 },
-    });
+    } as RequestInit);
 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => "");
