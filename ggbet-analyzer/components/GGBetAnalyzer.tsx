@@ -561,7 +561,6 @@ export default function GGBetAnalyzer() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Archivo', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
         * { box-sizing: border-box; transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
         ::-webkit-scrollbar { width: 9px; height: 9px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 9px; }
@@ -629,7 +628,7 @@ export default function GGBetAnalyzer() {
             <span className="live" style={{ width: 7, height: 7, borderRadius: 99, background: C.accent }} />
             {clock.toLocaleTimeString([], { hour12: false })}
           </div>
-          <button onClick={() => setLateNight((v) => !v)} title="Toggle late-night fatigue model"
+          <button onClick={() => setLateNight((v) => !v)} title="Toggle late-night fatigue model" aria-pressed={lateNight}
             style={{ display: "inline-flex", alignItems: "center", gap: 6,
               background: lateNight ? "rgba(255,194,75,0.12)" : C.glass,
               backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
@@ -644,7 +643,7 @@ export default function GGBetAnalyzer() {
       </header>
 
       {/* tab nav */}
-      <nav style={{ padding: "16px 22px 0", display: "flex", justifyContent: "center" }}>
+      <nav role="tablist" aria-label="Sections" style={{ padding: "16px 22px 0", display: "flex", justifyContent: "center" }}>
         <div style={{
           display: "inline-flex", flexWrap: "wrap", gap: 2, padding: 4,
           background: "rgba(255,255,255,0.04)",
@@ -657,7 +656,7 @@ export default function GGBetAnalyzer() {
           {TABS.map((t) => {
             const on = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)}
+              <button key={t.id} role="tab" aria-selected={on} id={`tab-${t.id}`} onClick={() => setTab(t.id)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
                   borderRadius: 10,
                   ...(on ? {
