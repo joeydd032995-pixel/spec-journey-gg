@@ -241,7 +241,7 @@ def log_prediction(
     with _connect(path) as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO shadow_predictions (
+            INSERT INTO shadow_predictions (
                 game_id, game_date, player1, player2,
                 champion_pred, challenger_pred,
                 champion_sigma, challenger_sigma,
@@ -251,6 +251,18 @@ def log_prediction(
                 champion_pnl, challenger_pnl,
                 logged_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(game_id) DO UPDATE SET
+                game_date=excluded.game_date,
+                player1=excluded.player1,
+                player2=excluded.player2,
+                champion_pred=excluded.champion_pred,
+                challenger_pred=excluded.challenger_pred,
+                champion_sigma=excluded.champion_sigma,
+                challenger_sigma=excluded.challenger_sigma,
+                champion_bet=excluded.champion_bet,
+                challenger_bet=excluded.challenger_bet,
+                logged_at=excluded.logged_at
+            WHERE shadow_predictions.champion_outcome = 'pending'
             """,
             (
                 game_id,

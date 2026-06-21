@@ -295,7 +295,7 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
             if hourCoef != 0.0:
                 h = _num(g.get("hour_utc", 13.0))
                 # Sinusoidal: +1 at 13:00 UTC (daytime peak), -1 at 01:00 UTC (overnight trough)
-                rp = rp + hourCoef * math.sin(2.0 * math.pi * (h - 13.0) / 24.0)
+                rp = rp + hourCoef * math.cos(2.0 * math.pi * (h - 13.0) / 24.0)
             if biasOffset != 0.0:
                 rp = rp + biasOffset
             rp = round(rp, 1)
@@ -303,8 +303,10 @@ def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp
             base_rows.append({"proj": round(bA + bB, 1), "sigma": math.sqrt(max(bA + bB, 1) * dispersion), "actual": actual})
         # update AFTER (leakage-free)
         R.update(A, TA, B, TB, _num(g["score1"]), _num(g["score2"]))
-        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"]); ppm_n[A] = ppm_n.get(A, 0) + 1
-        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"]); ppm_n[B] = ppm_n.get(B, 0) + 1
+        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"])
+        ppm_n[A] = ppm_n.get(A, 0) + 1
+        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"])
+        ppm_n[B] = ppm_n.get(B, 0) + 1
         match_pts[key] = match_pts.get(key, 0) + actual
         match_n[key] = match_n.get(key, 0) + 1
     return rated_rows, base_rows, R
@@ -471,8 +473,10 @@ def soft_book_backtest(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20,
                     win = actual < line
                     flag[key][0] += 1; flag[key][1] += pm if win else -1; flag[key][2] += int(win)
         R.update(A, TA, B, TB, _num(g["score1"]), _num(g["score2"]))
-        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"]); ppm_n[A] = ppm_n.get(A, 0) + 1
-        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"]); ppm_n[B] = ppm_n.get(B, 0) + 1
+        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"])
+        ppm_n[A] = ppm_n.get(A, 0) + 1
+        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"])
+        ppm_n[B] = ppm_n.get(B, 0) + 1
         ew[A] = _num(g["score1"]) if A not in ew else (1 - ewma) * ew[A] + ewma * _num(g["score1"])
         ew[B] = _num(g["score2"]) if B not in ew else (1 - ewma) * ew[B] + ewma * _num(g["score2"])
         lg_pts += _num(g["score1"]) + _num(g["score2"]); lg_n += 2

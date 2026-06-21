@@ -12,7 +12,12 @@ import math
 from typing import List, Dict, Any
 
 REQUIRED_COLUMNS: List[str] = ['date', 'player1', 'player2', 'score1', 'score2']
-OPTIONAL_COLUMNS: List[str] = ['p1_team', 'p2_team', 'p1_gp', 'p2_gp', 'actual_total']
+OPTIONAL_STRING_COLUMNS: List[str] = ['p1_team', 'p2_team', 'p1_form', 'p2_form']
+OPTIONAL_NUMERIC_COLUMNS: List[str] = [
+    'p1_gp', 'p2_gp', 'actual_total',
+    'p1_win_pct', 'p1_ppm', 'p2_win_pct', 'p2_ppm', 'hour_utc',
+]
+OPTIONAL_COLUMNS: List[str] = OPTIONAL_STRING_COLUMNS + OPTIONAL_NUMERIC_COLUMNS
 
 
 def _parse_date(date_str: str) -> str:
@@ -112,7 +117,7 @@ def load_and_validate(csv_path: str) -> List[Dict[str, Any]]:
                     )
 
             # Coerce optional numeric fields if present
-            for opt_col in ('p1_gp', 'p2_gp', 'actual_total'):
+            for opt_col in OPTIONAL_NUMERIC_COLUMNS:
                 val = row.get(opt_col, '')
                 if val not in (None, ''):
                     try:

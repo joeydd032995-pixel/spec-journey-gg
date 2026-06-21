@@ -66,11 +66,12 @@ def check_targets(metrics: dict) -> dict:
 
     # Map canonical metric dict keys to METRIC_TARGETS keys
     key_map = {
-        "brier":         "brier",
-        "ece":           "ece",
-        "mae":           "mae",
-        "biasOffset":    "betting_offset",  # injected from hyperparams by pipeline
-        "r":             "r_min",
+        "brier":          "brier",
+        "ece":            "ece",
+        "mae":            "mae",
+        "biasOffset":     "betting_offset",  # injected from hyperparams by pipeline
+        "betting_offset": "betting_offset",  # direct supply also accepted
+        "r":              "r_min",
     }
 
     for src_key, tgt_key in key_map.items():

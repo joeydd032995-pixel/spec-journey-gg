@@ -38,8 +38,8 @@ GGBA_GATE_MAE_MARGIN=0.2      # Min MAE improvement to promote challenger
 GGBA_GATE_MIN_TRADES=50       # Min trades for valid challenger
 
 ## Metric Targets
-Brier Score  ≤ 1.68
-ECE          ≤ 0.019
-MAE          ≤ 7.0
-Bias         ≤ -4.0 (model underpredicts)
-Correlation  → near 1.0
+Brier Score     ≤ 1.68
+ECE             ≤ 0.019
+MAE             ≤ 9.5 pts  (theoretical floor: 8.38 pts given within-pair σ=10.50)
+biasOffset      ≤ -4.0     (betting strategy parameter, not accuracy metric)
+Correlation (r) ≥ 0.55     (theoretical max ~0.694 given between-pair σ=9.94)

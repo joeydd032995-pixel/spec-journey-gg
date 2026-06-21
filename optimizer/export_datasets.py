@@ -29,7 +29,7 @@ from typing import Any
 try:
     import httpx
 except ImportError:
-    sys.exit("httpx not installed.  Run: pip install httpx")
+    raise ImportError("httpx not installed. Run: pip install httpx") from None
 
 # --------------------------------------------------------------------------- #
 # Configuration

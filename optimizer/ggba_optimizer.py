@@ -226,8 +226,8 @@ def precompute_features(games: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         avg_p2 = (p_pts.get(p2, 0.0) / p_gp[p2]) if p_gp.get(p2) else None
 
         # --- form strings (most recent first, up to 5 games) ---
-        form_p1 = ''.join(reversed(p_form.get(p1, [])))[-5:]
-        form_p2 = ''.join(reversed(p_form.get(p2, [])))[-5:]
+        form_p1 = ''.join(reversed(p_form.get(p1, [])))[:5]
+        form_p2 = ''.join(reversed(p_form.get(p2, [])))[:5]
 
         # --- days since last game for p1 ---
         days_p1: Optional[int] = None
@@ -373,7 +373,7 @@ def objective(
 
     # Normalise MAE by approximate sigma_ref (sqrt of typical total)
     # Use 130 as a reasonable default total for NBA 2K / eBasketball
-    sigma_ref = math.sqrt(max(mae, 1.0))  # use sqrt(mae) as scale-invariant ref
+    sigma_ref = math.sqrt(130.0)  # fixed reference: sqrt of typical NBA 2K total variance
     mae_norm = mae / max(sigma_ref, 1.0)
 
     hybrid_loss = 0.5 * mae_norm + 0.5 * max(0.0, 1.0 - abs(r))
@@ -705,6 +705,7 @@ def run_optimizer(
     csv_path: str,
     champion_params: Optional[Dict[str, float]] = None,
     mode: str = 'global',
+    n_iter: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full optimizer pipeline.
 
@@ -746,12 +747,12 @@ def run_optimizer(
     if mode == 'neighborhood':
         if champion_params is None:
             raise ValueError("champion_params must be provided for mode='neighborhood'.")
-        best_result = neighborhood_search(games, champion_params, n_iter=50)
+        best_result = neighborhood_search(games, champion_params, n_iter=n_iter if n_iter is not None else 50)
         best_params = best_result['params']
         fold_scores = best_result.get('fold_scores', [])
     else:
         # Global: random search then Bayesian refinement
-        random_results = random_search(games, n_iter=200, seed=42)
+        random_results = random_search(games, n_iter=n_iter if n_iter is not None else 200, seed=42)
         best_random = random_results[0]
 
         # Refine with Bayesian optimisation starting from best random result

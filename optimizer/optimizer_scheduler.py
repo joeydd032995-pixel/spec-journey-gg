@@ -147,7 +147,7 @@ def _save_json(path: str, data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def eval_job() -> None:
+def eval_job() -> bool:
     """4am daily evaluation job.
 
     Steps:
@@ -163,16 +163,17 @@ def eval_job() -> None:
     9. Log the run to ``monitor_log.db``.
 
     Catches ALL exceptions and logs them — never crashes the scheduler.
+    Returns True on success, False on any failure or skip.
     """
     try:
         if not _HAS_FULL_PIPELINE:
             log.warning("eval_job: optimizer pipeline modules not available; skipping")
-            return
+            return False
 
         csv_path = _find_best_csv(DATA_PATH, MIN_GP, DAYS)
         if csv_path is None:
             log.warning("eval_job: no CSV found in %s; skipping", DATA_PATH)
-            return
+            return False
 
         log.info("eval_job: using CSV %s", csv_path)
 
@@ -182,40 +183,41 @@ def eval_job() -> None:
         if champion is None:
             # First run — create initial champion from scratch
             log.info("eval_job: no existing champion; running initial optimization")
-            from optimizer.champion_challenger import run_optimizer  # type: ignore[import]
-            result = run_optimizer(csv_path, min_gp=MIN_GP, mode="full")
+            from optimizer.ggba_optimizer import run_optimizer  # type: ignore[import]
+            result = run_optimizer(csv_path=csv_path, champion_params=None, mode="global")
             if result is None:
                 log.warning("eval_job: optimizer returned no result; aborting")
-                return
+                return False
             promote(result, CHAMPION_PATH)
             log.info("eval_job: initial champion saved to %s", CHAMPION_PATH)
-            return
+            return True
 
         # Champion exists — run neighbourhood search around its params
         log.info("eval_job: running neighbourhood optimization around champion params")
-        from optimizer.champion_challenger import run_optimizer  # type: ignore[import]
+        from optimizer.ggba_optimizer import run_optimizer  # type: ignore[import]
         challenger_result = run_optimizer(
-            csv_path,
-            min_gp=MIN_GP,
-            mode="neighbourhood",
-            center=champion,
+            csv_path=csv_path,
+            champion_params=champion.get("hyperparams", {}),
+            mode="neighborhood",
         )
         if challenger_result is None:
             log.warning("eval_job: optimizer returned no challenger; aborting")
-            return
+            return False
 
         # Gate the challenger against the champion
-        gates_passed, gate_details = run_gates(champion, challenger_result, csv_path)
+        gate_result = run_gates(challenger_result, champion)
 
-        if gates_passed:
+        if gate_result.get("passed"):
             promote(challenger_result, CHAMPION_PATH)
-            log.info("eval_job: challenger promoted to champion — %s", gate_details)
+            log.info("eval_job: challenger promoted — %s", gate_result.get("summary"))
         else:
-            reject_and_log(challenger_result, gate_details)
-            log.info("eval_job: challenger rejected — %s", gate_details)
+            reject_and_log(challenger_result, gate_result)
+            log.info("eval_job: challenger rejected — %s", gate_result.get("summary"))
+        return True
 
     except Exception:
         log.exception("eval_job failed")
+        return False
 
 
 def monitor_job() -> None:
@@ -239,11 +241,16 @@ def monitor_job() -> None:
             return
 
         champion = _load_json(CHAMPION_PATH)
-        baseline_ece = champion.get("ece") if champion else None
+        baseline_ece = champion.get("metrics", {}).get("ece") if champion else None
 
-        retrain_enqueued = run_monitoring_cycle(
+        cycle_result = run_monitoring_cycle(
             csv_path=csv_path,
             baseline_ece=baseline_ece,
+        )
+        retrain_enqueued = (
+            bool(cycle_result.get("retrain_enqueued"))
+            if isinstance(cycle_result, dict)
+            else bool(cycle_result)
         )
         if retrain_enqueued:
             log.info("monitor_job: retrain enqueued by monitoring cycle")
@@ -276,10 +283,13 @@ def retrain_job() -> None:
         job_id = job.get("id") if isinstance(job, dict) else str(job)
         log.info("retrain_job: executing retrain for job_id=%s", job_id)
 
-        eval_job()
+        success = eval_job()
 
-        mark_retrain_done(job_id)
-        log.info("retrain_job: job_id=%s marked done", job_id)
+        if success:
+            mark_retrain_done(job_id)
+            log.info("retrain_job: job_id=%s marked done", job_id)
+        else:
+            log.warning("retrain_job: eval_job failed for job_id=%s; not marking done", job_id)
 
     except Exception:
         log.exception("retrain_job failed")

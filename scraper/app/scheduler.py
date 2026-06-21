@@ -83,3 +83,8 @@ def shutdown() -> None:
     """Gracefully stop the background scheduler without waiting for running jobs."""
     if _scheduler:
         _scheduler.shutdown(wait=False)
+    if _HAS_OPTIMIZER:
+        try:
+            _opt_sched.shutdown()
+        except Exception:
+            log.exception("failed to stop optimizer scheduler")

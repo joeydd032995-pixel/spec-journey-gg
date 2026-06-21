@@ -284,12 +284,14 @@ def cmd_optimize(args: argparse.Namespace) -> int:
 
     print(f"\nRunning optimizer (mode={mode}) ...")
 
-    # Build kwargs for run_optimizer; handle n_iters override if supported
+    # Build kwargs for run_optimizer; forward n_iters when provided
     run_kwargs: Dict[str, Any] = {
         "csv_path": csv_path,
         "champion_params": champion_params,
         "mode": mode,
     }
+    if n_iters is not None:
+        run_kwargs["n_iter"] = n_iters
 
     try:
         result = run_optimizer(**run_kwargs)
@@ -474,9 +476,14 @@ def cmd_monitor(args: argparse.Namespace) -> int:
         print("Running monitoring cycle (no CSV — limited checks).")
 
     try:
-        retrain_enqueued = run_monitoring_cycle(
+        cycle_result = run_monitoring_cycle(
             csv_path=csv_path,
             baseline_ece=baseline_ece,
+        )
+        retrain_enqueued = (
+            bool(cycle_result.get("retrain_enqueued"))
+            if isinstance(cycle_result, dict)
+            else bool(cycle_result)
         )
         if retrain_enqueued:
             print("  Retrain job enqueued (threshold breach detected).")
@@ -509,10 +516,9 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         return 1
 
     if daemon:
-        print("  Running in daemon mode (background). Detaching.")
-        return 0
-
-    print("  Scheduler running. Press Ctrl+C to stop.")
+        print("  Scheduler running in background (daemon mode). Press Ctrl+C to stop.")
+    else:
+        print("  Scheduler running. Press Ctrl+C to stop.")
     try:
         import time
         while True:
@@ -542,12 +548,12 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"  Updated   : {champion.get('updated_at', 'N/A')}")
             hp = champion.get("hyperparams", {})
             if hp:
-                print(f"  Hyperparams:")
+                print("  Hyperparams:")
                 for k, v in hp.items():
                     print(f"    {k:<12}: {v:.4f}" if isinstance(v, float) else f"    {k:<12}: {v}")
             m = champion.get("metrics", {})
             if m:
-                print(f"  Metrics:")
+                print("  Metrics:")
                 for k, v in m.items():
                     if isinstance(v, float):
                         print(f"    {k:<12}: {v:.4f}")
