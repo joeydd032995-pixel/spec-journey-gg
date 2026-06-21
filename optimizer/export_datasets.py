@@ -29,7 +29,7 @@ from typing import Any
 try:
     import httpx
 except ImportError:
-    sys.exit("httpx not installed.  Run: pip install httpx")
+    raise ImportError("httpx not installed. Run: pip install httpx") from None
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -76,14 +76,37 @@ class _Client:
         )
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        """GET *path* with polite rate-limiting; raises on HTTP errors."""
-        gap = POLITE_DELAY_S - (time.time() - self._last)
-        if gap > 0:
-            time.sleep(gap)
-        resp = self._http.get(f"{API_BASE}/{path.lstrip('/')}", params=params)
-        self._last = time.time()
-        resp.raise_for_status()
-        return resp.json()
+        """GET *path* with rate-limiting and exponential backoff for transient server errors.
+
+        4xx client errors (including 400 "date out of range") are raised immediately
+        without retry; only 429/5xx transient errors are retried.
+        """
+        url = f"{API_BASE}/{path.lstrip('/')}"
+        for attempt in range(4):
+            gap = POLITE_DELAY_S - (time.time() - self._last)
+            if gap > 0:
+                time.sleep(gap)
+            try:
+                resp = self._http.get(url, params=params)
+                self._last = time.time()
+                # Raise immediately on 4xx — client errors are not transient.
+                if 400 <= resp.status_code < 500:
+                    resp.raise_for_status()
+                # 5xx and 429: retry with backoff.
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+                    time.sleep(2 ** attempt)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as e:
+                if 400 <= e.response.status_code < 500 or attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+            except httpx.HTTPError:
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+        raise RuntimeError("unreachable")
 
     def participants(self) -> list[dict]:
         """Return all participant records with full season stats."""
@@ -91,10 +114,15 @@ class _Client:
         return data if isinstance(data, list) else []
 
     def schedule_day(self, day: datetime) -> list[dict]:
-        """Return fixtures for a single UTC calendar day."""
+        """Return fixtures for a single UTC calendar day, or [] if date is out of API range."""
         iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
-        data = self._get(f"schedule/{SPORT}", params={"date": iso})
-        return data if isinstance(data, list) else []
+        try:
+            data = self._get(f"schedule/{SPORT}", params={"date": iso})
+            return data if isinstance(data, list) else []
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                return []  # API window exceeded — treat as no data
+            raise
 
     def schedule_range(self, days: int) -> list[dict]:
         """Collect *days* daily schedules going backward, starting from yesterday.
@@ -286,15 +314,25 @@ def export_combo(
     gp: int,
     days: int,
     out_dir: str,
+    season_gp: dict[str, int] | None = None,
 ) -> str:
     """
-    Filter *wf_rows* to rows where both players have gp >= *gp*, write a CSV,
-    and return the output file path.
+    Filter *wf_rows* to rows where both players have effective GP >= *gp*,
+    write a CSV, and return the output file path.
+
+    Effective GP = max(in-window GP, season GP) so players with enough full-season
+    games qualify even if the rolling window captured fewer completed games.
     """
+    sgp = season_gp or {}
+
+    def _eff_gp(row: dict, player_key: str, gp_key: str) -> int:
+        raw = row.get(gp_key, 0)
+        raw_int = int(raw) if isinstance(raw, (int, float)) else 0
+        return max(raw_int, sgp.get(str(row.get(player_key, "")), 0))
+
     filtered = [
         r for r in wf_rows
-        if isinstance(r["p1_gp"], int) and isinstance(r["p2_gp"], int)
-        and r["p1_gp"] >= gp and r["p2_gp"] >= gp
+        if _eff_gp(r, "player1", "p1_gp") >= gp and _eff_gp(r, "player2", "p2_gp") >= gp
     ]
     fname = f"walkforward_gp{gp}_days{days}.csv"
     path = os.path.join(out_dir, fname)
@@ -348,7 +386,7 @@ def fetch_and_export(gp: int, days: int, out_dir: str) -> str:
     wf_rows = _build_walkforward(games, season_gp=season_gp)
 
     os.makedirs(out_dir, exist_ok=True)
-    return export_combo(wf_rows, gp, days, out_dir)
+    return export_combo(wf_rows, gp, days, out_dir, season_gp=season_gp)
 
 
 def fetch_all_days(days: int) -> tuple[list[dict], dict[str, int]]:
@@ -422,7 +460,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         games, season_gp = fetch_all_days(days)
         wf_rows = _build_walkforward(games, season_gp=season_gp)
         for gp in GP_BUCKETS:
-            export_combo(wf_rows, gp, days, OUTPUT_DIR)
+            export_combo(wf_rows, gp, days, OUTPUT_DIR, season_gp=season_gp)
         print()
 
     print(f"All {total} exports complete.")
@@ -478,8 +516,12 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.all:
+        if args.days is not None:
+            print("warning: --days is ignored in --all mode (all day windows are exported)", file=sys.stderr)
         cmd_all(args)
     elif args.list:
+        if args.days is not None:
+            print("warning: --days is ignored in --list mode", file=sys.stderr)
         cmd_list(args)
     elif args.gp is not None:
         if args.days is None:

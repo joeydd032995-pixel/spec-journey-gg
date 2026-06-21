@@ -253,29 +253,62 @@ class OnlineRatings:
 # --------------------------------------------------------------------------- #
 # walk-forward backtest + calibration (leakage-free)                          #
 # --------------------------------------------------------------------------- #
-def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp=10):
+def walk_forward(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20, min_gp=10,
+                 formCoef=0.0, warmCoef=0.0, matchCoef=0.0, biasOffset=0.0, hourCoef=0.0):
     """games: list of dicts with player1,player2,p1_team,p2_team,score1,score2,
     p1_gp,p2_gp (chronological). Returns rows [{proj,sigma,actual}] for both the
-    rated model and a raw-ppm baseline, leakage-free."""
+    rated model and a raw-ppm baseline, leakage-free.
+
+    formCoef:   points added per unit of combined form score (form_score in [-1,1] each).
+    warmCoef:   blend weight for API-reported ppm (0 = online-only, 1 = ppm-only).
+    matchCoef:  blend weight for matchup-specific running average (0 = off, requires min 3 prior games).
+    biasOffset: fixed pts added to every prediction (negative = conservative under-projection).
+    hourCoef:   amplitude of sinusoidal time-of-day adjustment (peak ≈ 13:00 UTC, trough ≈ 01:00 UTC).
+    """
     R = OnlineRatings(etaP, etaT, decay)
     ppm_pts, ppm_n = {}, {}
+    match_pts: dict = {}   # (A,B) canonical pair → cumulative actual total
+    match_n: dict = {}
     rated_rows, base_rows = [], []
     for g in games:
         A, B = g["player1"], g["player2"]
         TA, TB = g.get("p1_team", "") or "", g.get("p2_team", "") or ""
         actual = _num(g["actual_total"]) if g.get("actual_total") not in (None, "") else _num(g["score1"]) + _num(g["score2"])
+        key = (A, B) if A < B else (B, A)
         _, _, rate_total = R.predict(A, TA, B, TB)
         bA = ppm_pts.get(A, 0) / ppm_n[A] if ppm_n.get(A) else None
         bB = ppm_pts.get(B, 0) / ppm_n[B] if ppm_n.get(B) else None
         gp_ok = min(_num(g.get("p1_gp", ppm_n.get(A, 0))), _num(g.get("p2_gp", ppm_n.get(B, 0)))) >= min_gp
         if gp_ok and bA is not None and bB is not None:
-            rp = round(rate_total, 1)
+            rp = rate_total
+            if formCoef != 0.0:
+                fs = form_score(g.get("p1_form", "")) + form_score(g.get("p2_form", ""))
+                rp = rp + formCoef * fs
+            if warmCoef != 0.0:
+                api_a = _num(g.get("p1_ppm", 0))
+                api_b = _num(g.get("p2_ppm", 0))
+                if api_a > 0 and api_b > 0:
+                    rp = (1.0 - warmCoef) * rp + warmCoef * (api_a + api_b)
+            if matchCoef != 0.0 and match_n.get(key, 0) >= 3:
+                match_avg = match_pts[key] / match_n[key]
+                rp = (1.0 - matchCoef) * rp + matchCoef * match_avg
+            if hourCoef != 0.0:
+                h = _num(g.get("hour_utc", 13.0))
+                # Sinusoidal: +1 at 13:00 UTC (daytime peak), -1 at 01:00 UTC (overnight trough)
+                rp = rp + hourCoef * math.cos(2.0 * math.pi * (h - 13.0) / 24.0)
+            if biasOffset != 0.0:
+                rp = rp + biasOffset
+            rp = round(rp, 1)
             rated_rows.append({"proj": rp, "sigma": math.sqrt(max(rp, 1) * dispersion), "actual": actual})
             base_rows.append({"proj": round(bA + bB, 1), "sigma": math.sqrt(max(bA + bB, 1) * dispersion), "actual": actual})
         # update AFTER (leakage-free)
         R.update(A, TA, B, TB, _num(g["score1"]), _num(g["score2"]))
-        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"]); ppm_n[A] = ppm_n.get(A, 0) + 1
-        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"]); ppm_n[B] = ppm_n.get(B, 0) + 1
+        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"])
+        ppm_n[A] = ppm_n.get(A, 0) + 1
+        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"])
+        ppm_n[B] = ppm_n.get(B, 0) + 1
+        match_pts[key] = match_pts.get(key, 0) + actual
+        match_n[key] = match_n.get(key, 0) + 1
     return rated_rows, base_rows, R
 
 
@@ -324,12 +357,9 @@ def weighted_hybrid_loss(rows, w_huber=0.5, w_logcosh=0.3, w_mae=0.2) -> float:
 def verify_loss_consistency(rows, tol=2.0) -> dict:
     """Cross-verification: all three losses should be within `tol` of each other on same data.
 
-    The three loss functions (Huber, Log-Cosh, Hybrid) operate on different
-    scales by design.  ``consistent`` is therefore defined as:
-      max_spread / max(vals) <= tol
-    i.e. the relative spread among the three values must be < tol (default 2.0,
-    meaning the largest value is at most 3x the smallest).  An absolute
-    max_spread is also returned for inspection.
+    ``consistent`` is defined as (max(vals) / min(vals)) - 1 <= tol, so with
+    default tol=2.0 the largest value may be at most 3x the smallest.
+    When min(vals)==0 and max(vals)>0, consistency is treated as failed.
 
     Returns {'consistent': bool, 'huber': float, 'log_cosh': float, 'hybrid': float, 'max_spread': float}"""
     h = huber_loss(rows)
@@ -337,9 +367,15 @@ def verify_loss_consistency(rows, tol=2.0) -> dict:
     hy = weighted_hybrid_loss(rows)
     vals = [h, lc, hy]
     max_val = max(vals)
-    max_spread = max_val - min(vals)
-    # Use relative spread so the check is scale-invariant across loss families.
-    relative_spread = (max_spread / max_val) if max_val > 0 else 0.0
+    min_val = min(vals)
+    max_spread = max_val - min_val
+    # Relative spread: (max/min) - 1 so consistent means max is at most (1+tol)x min.
+    if min_val > 0:
+        relative_spread = (max_val / min_val) - 1.0
+    elif max_val == 0:
+        relative_spread = 0.0
+    else:
+        relative_spread = float("inf")
     return {
         "consistent": relative_spread <= tol,
         "huber": h,
@@ -437,8 +473,10 @@ def soft_book_backtest(games, etaP=0.08, etaT=0.04, decay=0.0, dispersion=1.20,
                     win = actual < line
                     flag[key][0] += 1; flag[key][1] += pm if win else -1; flag[key][2] += int(win)
         R.update(A, TA, B, TB, _num(g["score1"]), _num(g["score2"]))
-        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"]); ppm_n[A] = ppm_n.get(A, 0) + 1
-        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"]); ppm_n[B] = ppm_n.get(B, 0) + 1
+        ppm_pts[A] = ppm_pts.get(A, 0) + _num(g["score1"])
+        ppm_n[A] = ppm_n.get(A, 0) + 1
+        ppm_pts[B] = ppm_pts.get(B, 0) + _num(g["score2"])
+        ppm_n[B] = ppm_n.get(B, 0) + 1
         ew[A] = _num(g["score1"]) if A not in ew else (1 - ewma) * ew[A] + ewma * _num(g["score1"])
         ew[B] = _num(g["score2"]) if B not in ew else (1 - ewma) * ew[B] + ewma * _num(g["score2"])
         lg_pts += _num(g["score1"]) + _num(g["score2"]); lg_n += 2

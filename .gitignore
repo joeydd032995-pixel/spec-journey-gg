@@ -7,3 +7,5 @@ venv/
 dist/
 build/
 *.spec.bak
+.claude/
+ggba_data/

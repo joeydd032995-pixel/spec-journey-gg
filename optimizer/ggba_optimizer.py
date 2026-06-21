@@ -64,7 +64,19 @@ PARAM_SPACE: Dict[str, Tuple[float, float]] = {
     'decay':      (0.0,  0.05),   # recency decay
     'dispersion': (0.80, 2.00),   # sigma multiplier
     'edge':       (0.01, 0.08),   # edge threshold
+    'formCoef':   (0.0,  6.0),    # points per unit of combined form score
+    'warmCoef':   (0.0,  0.75),   # PPM warm-start blend weight
+    'matchCoef':  (0.0,  0.80),   # matchup-specific history blend weight
+    'hourCoef':   (0.0,  8.0),    # amplitude of time-of-day sinusoidal adjustment
+    # biasOffset is NOT in PARAM_SPACE — it is a betting strategy parameter
+    # fixed at -4.0 for production use, set post-optimisation.  Calibration
+    # metrics (ECE, Brier, MAE, r) are always evaluated with biasOffset = 0
+    # so a 4 pt conservative offset does not inflate calibration error.
 }
+
+# Betting offset applied to every prediction at signal-generation time.
+# Never used during optimisation — only stored in the output hyperparams.
+BETTING_BIAS_OFFSET: float = -4.0
 
 # Default min_gp — model needs this many games before a player is rated
 _DEFAULT_MIN_GP: int = 5
@@ -214,8 +226,8 @@ def precompute_features(games: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         avg_p2 = (p_pts.get(p2, 0.0) / p_gp[p2]) if p_gp.get(p2) else None
 
         # --- form strings (most recent first, up to 5 games) ---
-        form_p1 = ''.join(reversed(p_form.get(p1, [])))[-5:]
-        form_p2 = ''.join(reversed(p_form.get(p2, [])))[-5:]
+        form_p1 = ''.join(reversed(p_form.get(p1, [])))[:5]
+        form_p2 = ''.join(reversed(p_form.get(p2, [])))[:5]
 
         # --- days since last game for p1 ---
         days_p1: Optional[int] = None
@@ -282,12 +294,13 @@ def objective(
     decay      = p['decay']
     dispersion = p['dispersion']
     edge       = p['edge']
+    formCoef   = p['formCoef']
+    warmCoef   = p['warmCoef']
+    matchCoef  = p['matchCoef']
+    hourCoef   = p['hourCoef']
+    # biasOffset is not optimised — always 0.0 during training so that ECE
+    # and MAE are evaluated on the calibrated (unshifted) model output.
 
-    # Train the model on fold_train (state is captured in the returned model object)
-    # We run walk_forward over the combined train+val sequence but we only
-    # evaluate on val predictions — we feed train first to warm up the model,
-    # then val.  Since walk_forward is leakage-free (predict before update),
-    # running it sequentially is equivalent to "train then predict on val".
     combined = fold_train + fold_val
     try:
         rated_rows, _base_rows, _model = walk_forward(
@@ -297,6 +310,11 @@ def objective(
             decay=decay,
             dispersion=dispersion,
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=formCoef,
+            warmCoef=warmCoef,
+            matchCoef=matchCoef,
+            biasOffset=0.0,
+            hourCoef=hourCoef,
         )
     except Exception:
         return 1e9  # degenerate params
@@ -331,6 +349,11 @@ def objective(
             decay=decay,
             dispersion=dispersion,
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=formCoef,
+            warmCoef=warmCoef,
+            matchCoef=matchCoef,
+            biasOffset=0.0,
+            hourCoef=hourCoef,
         )
         n_train_rated = len(train_rated)
     except Exception:
@@ -350,7 +373,7 @@ def objective(
 
     # Normalise MAE by approximate sigma_ref (sqrt of typical total)
     # Use 130 as a reasonable default total for NBA 2K / eBasketball
-    sigma_ref = math.sqrt(max(mae, 1.0))  # use sqrt(mae) as scale-invariant ref
+    sigma_ref = math.sqrt(130.0)  # fixed reference: sqrt of typical NBA 2K total variance
     mae_norm = mae / max(sigma_ref, 1.0)
 
     hybrid_loss = 0.5 * mae_norm + 0.5 * max(0.0, 1.0 - abs(r))
@@ -561,6 +584,11 @@ def final_evaluation(
             decay=p['decay'],
             dispersion=p['dispersion'],
             min_gp=_DEFAULT_MIN_GP,
+            formCoef=p.get('formCoef', 0.0),
+            warmCoef=p.get('warmCoef', 0.0),
+            matchCoef=p.get('matchCoef', 0.0),
+            biasOffset=0.0,
+            hourCoef=p.get('hourCoef', 0.0),
         )
     except Exception as exc:
         return {'error': str(exc)}
@@ -677,6 +705,7 @@ def run_optimizer(
     csv_path: str,
     champion_params: Optional[Dict[str, float]] = None,
     mode: str = 'global',
+    n_iter: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full optimizer pipeline.
 
@@ -718,12 +747,12 @@ def run_optimizer(
     if mode == 'neighborhood':
         if champion_params is None:
             raise ValueError("champion_params must be provided for mode='neighborhood'.")
-        best_result = neighborhood_search(games, champion_params, n_iter=50)
+        best_result = neighborhood_search(games, champion_params, n_iter=n_iter if n_iter is not None else 50)
         best_params = best_result['params']
         fold_scores = best_result.get('fold_scores', [])
     else:
         # Global: random search then Bayesian refinement
-        random_results = random_search(games, n_iter=200, seed=42)
+        random_results = random_search(games, n_iter=n_iter if n_iter is not None else 200, seed=42)
         best_random = random_results[0]
 
         # Refine with Bayesian optimisation starting from best random result
@@ -756,8 +785,13 @@ def run_optimizer(
         fold_metric_list.append(fm)
     robustness = robustness_stats(fold_metric_list)
 
+    # Attach the fixed betting offset to the output hyperparams.
+    # It was NOT part of the search (PARAM_SPACE excludes it) but is required
+    # by production signal generation and the Betting Offset metric gate.
+    best_params_out = {**best_params, 'biasOffset': BETTING_BIAS_OFFSET}
+
     return {
-        'hyperparams':  best_params,
+        'hyperparams':  best_params_out,
         'metrics':      metrics,
         'fold_scores':  fold_scores,
         'leakage_diag': leakage_diag,

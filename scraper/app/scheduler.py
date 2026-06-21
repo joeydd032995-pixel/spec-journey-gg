@@ -8,6 +8,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import cache, config, scraper
 
+try:
+    from optimizer import optimizer_scheduler as _opt_sched
+    _HAS_OPTIMIZER = True
+except ImportError:
+    _HAS_OPTIMIZER = False
+
 log = logging.getLogger("h2hggl.scheduler")
 _scheduler: BackgroundScheduler | None = None
 
@@ -67,6 +73,9 @@ def start() -> BackgroundScheduler | None:
     _scheduler.start()
     log.info("scheduler started (games=%dm players=%dm archive=%dd@02:00UTC)",
              config.REFRESH_GAMES_MIN, config.REFRESH_PLAYERS_MIN, config.ARCHIVE_DAYS)
+    if _HAS_OPTIMIZER:
+        _opt_sched.start()
+        log.info("optimizer scheduler started")
     return _scheduler
 
 
@@ -74,3 +83,8 @@ def shutdown() -> None:
     """Gracefully stop the background scheduler without waiting for running jobs."""
     if _scheduler:
         _scheduler.shutdown(wait=False)
+    if _HAS_OPTIMIZER:
+        try:
+            _opt_sched.shutdown()
+        except Exception:
+            log.exception("failed to stop optimizer scheduler")

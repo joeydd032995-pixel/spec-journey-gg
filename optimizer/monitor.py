@@ -14,6 +14,7 @@ Stdlib only: sqlite3, json, math, statistics, os, datetime, uuid.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -21,6 +22,8 @@ import statistics
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from optimizer.drift_detector import detect_feature_drift
 
@@ -161,10 +164,9 @@ def compute_realized_ev(
     """Compute rolling expected value from settled shadow predictions.
 
     Expects a ``shadow_predictions`` table with columns:
-        settled_at  – ISO-8601 timestamp
-        stake       – stake amount (default 1.0)
-        payout      – payout received (0 if lost, stake * decimal_odds if won)
-        settled     – 1 if the bet has been settled, else 0
+        champion_pnl     – profit/loss per bet (negative for losses)
+        champion_outcome – outcome string: ``'win'``, ``'loss'``, or ``'pending'``
+        logged_at        – ISO-8601 timestamp when the prediction was logged
 
     Returns
     -------
@@ -179,12 +181,7 @@ def compute_realized_ev(
     returns ev_7d=0.0 and bets=0 (graceful fallback).
     """
     now = datetime.now(timezone.utc)
-    window_start_dt = now.replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
     # Go back window_days days from today (inclusive today)
-    # Use timestamp arithmetic: subtract (window_days - 1) days
-    import time as _time
     window_start_ts = now.timestamp() - window_days * 86400.0
     window_start = datetime.fromtimestamp(window_start_ts, tz=timezone.utc).isoformat()
     window_end = now.isoformat()
@@ -199,11 +196,11 @@ def compute_realized_ev(
 
         cur = conn.execute(
             """
-            SELECT stake, payout
+            SELECT champion_pnl
             FROM shadow_predictions
-            WHERE settled = 1
-              AND settled_at >= ?
-              AND settled_at <= ?
+            WHERE champion_outcome IN ('win', 'loss')
+              AND logged_at >= ?
+              AND logged_at <= ?
             """,
             (window_start, window_end),
         )
@@ -216,11 +213,7 @@ def compute_realized_ev(
     if not rows:
         return {"ev_7d": 0.0, "bets": 0, "window_start": window_start, "window_end": window_end}
 
-    profits = []
-    for stake, payout in rows:
-        stake = float(stake) if stake is not None else 1.0
-        payout = float(payout) if payout is not None else 0.0
-        profits.append((payout - stake) / stake if stake != 0 else 0.0)
+    profits = [float(r[0]) if r[0] is not None else 0.0 for r in rows]
 
     ev_7d = statistics.mean(profits)
     return {
@@ -241,8 +234,8 @@ def compute_hit_rate(
 ) -> dict:
     """Compute rolling hit rate vs break-even (52.38% at -110 odds).
 
-    Expects the same ``shadow_predictions`` schema as :func:`compute_realized_ev`,
-    plus a ``won`` column (1 = bet won, 0 = bet lost).
+    Expects the ``shadow_predictions`` table with columns ``champion_outcome``
+    (``'win'`` or ``'loss'``) and ``logged_at``.
 
     Returns
     -------
@@ -278,34 +271,17 @@ def compute_hit_rate(
                 "above_breakeven": False,
             }
 
-        # Try column "won" first; fall back to payout > 0 heuristic.
-        try:
-            cur = conn.execute(
-                """
-                SELECT won
-                FROM shadow_predictions
-                WHERE settled = 1
-                  AND settled_at >= ?
-                  AND settled_at <= ?
-                """,
-                (window_start, window_end),
-            )
-            rows = [(int(r[0]),) for r in cur.fetchall()]
-        except sqlite3.OperationalError:
-            cur = conn.execute(
-                """
-                SELECT payout, stake
-                FROM shadow_predictions
-                WHERE settled = 1
-                  AND settled_at >= ?
-                  AND settled_at <= ?
-                """,
-                (window_start, window_end),
-            )
-            rows = [
-                (1 if (float(r[0] or 0) > float(r[1] or 1)) else 0,)
-                for r in cur.fetchall()
-            ]
+        cur = conn.execute(
+            """
+            SELECT champion_outcome
+            FROM shadow_predictions
+            WHERE champion_outcome IN ('win', 'loss')
+              AND logged_at >= ?
+              AND logged_at <= ?
+            """,
+            (window_start, window_end),
+        )
+        rows = [(1 if r[0] == 'win' else 0,) for r in cur.fetchall()]
     except sqlite3.Error:
         rows = []
     finally:
@@ -594,7 +570,7 @@ def dequeue_retrain(path: str = RETRAIN_QUEUE_PATH) -> Optional[dict]:
     so if the process crashes the status can be detected on restart.
     """
     queue = _load_queue(path)
-    for idx, job in enumerate(queue):
+    for job in queue:
         if job.get("status") == "pending":
             job["status"] = "running"
             _save_queue(queue, path)
@@ -621,6 +597,7 @@ def run_monitoring_cycle(
     baseline_ece: float = 0.021,
     shadow_path: str = SHADOW_DB_PATH,
     log_path: str = MONITOR_LOG_PATH,
+    csv_path: Optional[str] = None,
 ) -> dict:
     """Run one full monitoring cycle.
 
@@ -660,6 +637,20 @@ def run_monitoring_cycle(
         retrain_enqueued: bool
     }
     """
+    # Derive game windows from CSV when callers pass csv_path instead of game lists.
+    if csv_path and (recent_games is None or reference_games is None):
+        try:
+            from optimizer.data_validator import load_and_validate
+            all_games = load_and_validate(csv_path)
+            if all_games:
+                split = max(1, int(len(all_games) * 0.8))
+                if reference_games is None:
+                    reference_games = all_games[:split]
+                if recent_games is None:
+                    recent_games = all_games[split:]
+        except Exception as exc:
+            _log.warning("run_monitoring_cycle: failed to load CSV %s: %s", csv_path, exc)
+
     # Step 1 & 2: EV and hit-rate from shadow DB.
     ev_result = compute_realized_ev(window_days=7, shadow_path=shadow_path)
     hit_rate_result = compute_hit_rate(window_days=7, shadow_path=shadow_path)

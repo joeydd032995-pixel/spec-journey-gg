@@ -9,40 +9,47 @@ from __future__ import annotations
 
 import csv
 import math
-from typing import List, Dict, Any
+from datetime import date as _date
+from typing import Any, Dict, List, Optional
 
 REQUIRED_COLUMNS: List[str] = ['date', 'player1', 'player2', 'score1', 'score2']
-OPTIONAL_COLUMNS: List[str] = ['p1_team', 'p2_team', 'p1_gp', 'p2_gp', 'actual_total']
+OPTIONAL_STRING_COLUMNS: List[str] = ['p1_team', 'p2_team', 'p1_form', 'p2_form']
+OPTIONAL_NUMERIC_COLUMNS: List[str] = [
+    'p1_gp', 'p2_gp', 'actual_total',
+    'p1_win_pct', 'p1_ppm', 'p2_win_pct', 'p2_ppm', 'hour_utc',
+]
+OPTIONAL_COLUMNS: List[str] = OPTIONAL_STRING_COLUMNS + OPTIONAL_NUMERIC_COLUMNS
 
 
-def _parse_date(date_str: str) -> str:
-    """Return a normalised ISO-8601 date string (YYYY-MM-DD) for comparison.
+def _parse_date(date_str: str) -> Optional[_date]:
+    """Return a ``datetime.date`` for chronological comparison, or None on failure.
 
-    Accepts YYYY-MM-DD and MM/DD/YYYY formats; otherwise returns the raw string
-    so alphabetical comparison still works on consistent formats.
+    Accepts YYYY-MM-DD and MM/DD/YYYY formats.
     """
     s = str(date_str).strip()
     if not s:
-        return s
-    # MM/DD/YYYY -> YYYY-MM-DD
+        return None
+    # MM/DD/YYYY
     if len(s) == 10 and s[2] == '/' and s[5] == '/':
         try:
-            mm, dd, yyyy = s[:2], s[3:5], s[6:]
-            return f"{yyyy}-{mm}-{dd}"
-        except Exception:
+            return _date(int(s[6:]), int(s[:2]), int(s[3:5]))
+        except (ValueError, TypeError):
             pass
-    return s
+    # YYYY-MM-DD
+    try:
+        return _date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+    except (ValueError, TypeError, IndexError):
+        pass
+    return None
 
 
 def check_chronological(games: List[Dict[str, Any]]) -> bool:
-    """Return True if *games* are sorted by date ascending (required for leakage-free walk-forward).
-
-    Compares adjacent normalised date strings lexicographically — works for
-    ISO-8601 (YYYY-MM-DD) dates without importing datetime.
-    """
-    prev = None
+    """Return True if *games* are sorted by date ascending (required for leakage-free walk-forward)."""
+    prev: Optional[_date] = None
     for g in games:
         cur = _parse_date(g.get('date', ''))
+        if cur is None:
+            continue
         if prev is not None and cur < prev:
             return False
         prev = cur
@@ -84,7 +91,7 @@ def load_and_validate(csv_path: str) -> List[Dict[str, Any]]:
             )
         games: List[Dict[str, Any]] = []
         for lineno, raw_row in enumerate(reader, start=2):
-            row: Dict[str, Any] = {k.strip(): v for k, v in raw_row.items()}
+            row: Dict[str, Any] = {k.strip(): v for k, v in raw_row.items() if k is not None}
 
             # Validate required numeric fields
             for num_col in ('score1', 'score2'):
@@ -112,7 +119,7 @@ def load_and_validate(csv_path: str) -> List[Dict[str, Any]]:
                     )
 
             # Coerce optional numeric fields if present
-            for opt_col in ('p1_gp', 'p2_gp', 'actual_total'):
+            for opt_col in OPTIONAL_NUMERIC_COLUMNS:
                 val = row.get(opt_col, '')
                 if val not in (None, ''):
                     try:
