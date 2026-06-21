@@ -335,3 +335,7 @@ Make sure `ggba_h2hggl.py` is in the same folder as `ggba_gui.py`. The GUI impor
 
 **First fetch is slow (3–8 s)**
 The first request goes live to h2hggl.com. Subsequent calls in the same session are much faster.
+
+---
+
+JD
