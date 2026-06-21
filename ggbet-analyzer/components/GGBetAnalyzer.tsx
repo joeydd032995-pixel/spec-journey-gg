@@ -25,8 +25,8 @@ import {
 /* ----------------------------- palette ----------------------------------- */
 const C = {
   // Base
-  bg:               "#04060d",
-  bgAlt:            "#070a14",
+  bg:               "#080808",
+  bgAlt:            "#0a0a0c",
   // Glass surface fills — backdrop-filter does the heavy lifting
   glass:            "rgba(255,255,255,0.055)",
   glassHi:          "rgba(255,255,255,0.09)",
@@ -579,17 +579,33 @@ export default function GGBetAnalyzer() {
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       `}</style>
 
-      {/* atmospheric backdrop */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none",
-        background: `
-          radial-gradient(ellipse 1400px 700px at 80% -20%, rgba(168,180,175,0.09), transparent 65%),
-          radial-gradient(ellipse 1000px 600px at 0% 110%, rgba(95,176,255,0.07), transparent 60%),
-          radial-gradient(ellipse 900px 500px at 50% 50%, rgba(168,180,175,0.025), transparent 70%)
-        ` }} />
+      {/* atmospheric smoke backdrop */}
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
+        {/* Primary left smoke column */}
+        <div style={{ position: "absolute", left: "-8%", top: "18%", width: "58%", height: "88%",
+          background: "rgba(255,255,255,0.055)", filter: "blur(72px)", transform: "rotate(-18deg)",
+          borderRadius: "35% 65% 55% 45% / 55% 38% 62% 45%" }} />
+        {/* Secondary right wisp */}
+        <div style={{ position: "absolute", right: "-5%", top: "12%", width: "52%", height: "78%",
+          background: "rgba(255,255,255,0.032)", filter: "blur(90px)", transform: "rotate(14deg)",
+          borderRadius: "60% 40% 35% 65% / 45% 65% 35% 55%" }} />
+        {/* Thin center connecting wisp */}
+        <div style={{ position: "absolute", left: "18%", top: "42%", width: "65%", height: "22%",
+          background: "rgba(255,255,255,0.028)", filter: "blur(55px)", transform: "rotate(-8deg)",
+          borderRadius: "50% 50% 50% 50% / 30% 70% 30% 70%" }} />
+        {/* Bottom-left anchor smoke */}
+        <div style={{ position: "absolute", left: "-2%", bottom: "0%", width: "42%", height: "42%",
+          background: "rgba(255,255,255,0.048)", filter: "blur(60px)", transform: "rotate(-6deg)",
+          borderRadius: "40% 60% 60% 40% / 50% 42% 58% 50%" }} />
+        {/* Upper-right subtle wisp */}
+        <div style={{ position: "absolute", right: "8%", top: "5%", width: "30%", height: "32%",
+          background: "rgba(255,255,255,0.022)", filter: "blur(80px)",
+          borderRadius: "55% 45% 45% 55% / 45% 55% 45% 55%" }} />
+      </div>
 
       {/* header */}
       <header style={{ position: "sticky", top: 0, zIndex: 20,
-        background: "rgba(4,6,13,0.72)",
+        background: "rgba(8,8,8,0.65)",
         backdropFilter: "blur(32px) saturate(180%)",
         WebkitBackdropFilter: "blur(32px) saturate(180%)",
         borderBottom: `1px solid ${C.glassBorder}`,
@@ -628,7 +644,7 @@ export default function GGBetAnalyzer() {
       </header>
 
       {/* tab nav */}
-      <nav style={{ padding: "16px 22px 0" }}>
+      <nav style={{ padding: "16px 22px 0", display: "flex", justifyContent: "center" }}>
         <div style={{
           display: "inline-flex", flexWrap: "wrap", gap: 2, padding: 4,
           background: "rgba(255,255,255,0.04)",
@@ -668,7 +684,7 @@ export default function GGBetAnalyzer() {
         </div>
       </nav>
 
-      <main style={{ position: "relative", padding: "22px", maxWidth: 1180, margin: "0 auto" }}>
+      <main style={{ position: "relative", padding: "22px", maxWidth: 1280, margin: "0 auto" }}>
         {!loaded ? (
           <div style={{ color: C.muted, padding: 40, textAlign: "center" }}>Loading terminal…</div>
         ) : tab === "data" ? (
