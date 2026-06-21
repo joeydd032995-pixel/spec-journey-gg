@@ -14,6 +14,7 @@ Stdlib only: sqlite3, json, math, statistics, os, datetime, uuid.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -21,6 +22,8 @@ import statistics
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from optimizer.drift_detector import detect_feature_drift
 
@@ -161,10 +164,9 @@ def compute_realized_ev(
     """Compute rolling expected value from settled shadow predictions.
 
     Expects a ``shadow_predictions`` table with columns:
-        settled_at  – ISO-8601 timestamp
-        stake       – stake amount (default 1.0)
-        payout      – payout received (0 if lost, stake * decimal_odds if won)
-        settled     – 1 if the bet has been settled, else 0
+        champion_pnl     – profit/loss per bet (negative for losses)
+        champion_outcome – outcome string: ``'win'``, ``'loss'``, or ``'pending'``
+        logged_at        – ISO-8601 timestamp when the prediction was logged
 
     Returns
     -------
@@ -232,8 +234,8 @@ def compute_hit_rate(
 ) -> dict:
     """Compute rolling hit rate vs break-even (52.38% at -110 odds).
 
-    Expects the same ``shadow_predictions`` schema as :func:`compute_realized_ev`,
-    plus a ``won`` column (1 = bet won, 0 = bet lost).
+    Expects the ``shadow_predictions`` table with columns ``champion_outcome``
+    (``'win'`` or ``'loss'``) and ``logged_at``.
 
     Returns
     -------
@@ -646,8 +648,8 @@ def run_monitoring_cycle(
                     reference_games = all_games[:split]
                 if recent_games is None:
                     recent_games = all_games[split:]
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("run_monitoring_cycle: failed to load CSV %s: %s", csv_path, exc)
 
     # Step 1 & 2: EV and hit-rate from shadow DB.
     ev_result = compute_realized_ev(window_days=7, shadow_path=shadow_path)
