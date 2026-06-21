@@ -34,16 +34,16 @@ const C = {
   glassSpec:        "rgba(255,255,255,0.18)",   // specular top-edge highlight
   glassInner:       "rgba(255,255,255,0.06)",   // inner ambient glow
   // Accent-tinted glass (active / selected states)
-  glassAccent:      "rgba(61,245,160,0.10)",
-  glassAccentBorder:"rgba(61,245,160,0.28)",
-  glassAccentSpec:  "rgba(61,245,160,0.22)",
+  glassAccent:      "rgba(168,180,175,0.10)",
+  glassAccentBorder:"rgba(168,180,175,0.28)",
+  glassAccentSpec:  "rgba(168,180,175,0.22)",
   // Semantic tokens (unchanged)
   text:       "#e9f1ec",
   muted:      "#7a8c84",
   faint:      "#54635d",
-  accent:     "#3df5a0",
-  accentDim:  "#1c6b48",
-  pos:        "#3df5a0",
+  accent:     "#a8b4af",
+  accentDim:  "#2e3a36",
+  pos:        "#a8b4af",
   neg:        "#ff5d52",
   amber:      "#ffc24b",
   blue:       "#5fb0ff",
@@ -74,9 +74,9 @@ const GLASS_ACTIVE: React.CSSProperties = {
   border:      `1px solid ${C.glassAccentBorder}`,
   boxShadow: [
     `inset 0 1px 0 ${C.glassAccentSpec}`,
-    "inset 0 0 0 1px rgba(61,245,160,0.08)",
+    "inset 0 0 0 1px rgba(168,180,175,0.08)",
     "0 8px 32px rgba(0,0,0,0.40)",
-    "0 0 20px rgba(61,245,160,0.12)",
+    "0 0 20px rgba(168,180,175,0.12)",
   ].join(", "),
 };
 const GLASS_INPUT: React.CSSProperties = {
@@ -380,7 +380,7 @@ const Card = ({ children, style, glow }: { children?: React.ReactNode; style?: R
       boxShadow: [
         `inset 0 1px 0 ${C.glassAccentSpec}`,
         "0 8px 32px rgba(0,0,0,0.40)",
-        "0 0 24px rgba(61,245,160,0.10)",
+        "0 0 24px rgba(168,180,175,0.10)",
       ].join(", "),
     } : {}),
     ...style,
@@ -434,11 +434,11 @@ const Field = ({ label, value, onChange, type = "text", placeholder, step, mono 
 const Btn = ({ children, onClick, kind = "ghost", disabled, style }: { children?: React.ReactNode; onClick?: () => void; kind?: string; disabled?: boolean; style?: React.CSSProperties }) => {
   const kinds: Record<string, React.CSSProperties> = {
     primary: {
-      background: "rgba(61,245,160,0.14)",
+      background: "rgba(168,180,175,0.14)",
       backdropFilter: "blur(12px)",
       WebkitBackdropFilter: "blur(12px)",
-      border: "1px solid rgba(61,245,160,0.32)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 0 14px rgba(61,245,160,0.12)",
+      border: "1px solid rgba(168,180,175,0.32)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 0 14px rgba(168,180,175,0.12)",
       color: C.accent,
       fontWeight: 700,
     },
@@ -568,7 +568,7 @@ export default function GGBetAnalyzer() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::selection { background: ${C.accent}33; }
         input::placeholder { color: ${C.faint}; }
-        :focus-visible { outline: 2px solid rgba(61,245,160,0.60); outline-offset: 2px; }
+        :focus-visible { outline: 2px solid rgba(168,180,175,0.60); outline-offset: 2px; }
         @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .rise { animation: rise .4s ease both; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
@@ -582,9 +582,9 @@ export default function GGBetAnalyzer() {
       {/* atmospheric backdrop */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none",
         background: `
-          radial-gradient(ellipse 1400px 700px at 80% -20%, rgba(61,245,160,0.09), transparent 65%),
+          radial-gradient(ellipse 1400px 700px at 80% -20%, rgba(168,180,175,0.09), transparent 65%),
           radial-gradient(ellipse 1000px 600px at 0% 110%, rgba(95,176,255,0.07), transparent 60%),
-          radial-gradient(ellipse 900px 500px at 50% 50%, rgba(61,245,160,0.025), transparent 70%)
+          radial-gradient(ellipse 900px 500px at 50% 50%, rgba(168,180,175,0.025), transparent 70%)
         ` }} />
 
       {/* header */}
@@ -649,9 +649,9 @@ export default function GGBetAnalyzer() {
                     border: `1px solid ${C.glassAccentBorder}`,
                     boxShadow: [
                       `inset 0 1px 0 ${C.glassAccentSpec}`,
-                      "inset 0 0 0 1px rgba(61,245,160,0.08)",
+                      "inset 0 0 0 1px rgba(168,180,175,0.08)",
                       "0 4px 12px rgba(0,0,0,0.30)",
-                      "0 0 16px rgba(61,245,160,0.10)",
+                      "0 0 16px rgba(168,180,175,0.10)",
                     ].join(", "),
                     color: C.text,
                   } : {
