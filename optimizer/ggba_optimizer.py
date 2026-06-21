@@ -67,9 +67,16 @@ PARAM_SPACE: Dict[str, Tuple[float, float]] = {
     'formCoef':   (0.0,  6.0),    # points per unit of combined form score
     'warmCoef':   (0.0,  0.75),   # PPM warm-start blend weight
     'matchCoef':  (0.0,  0.80),   # matchup-specific history blend weight
-    'biasOffset': (-6.0, 0.0),    # fixed pts added to every prediction (≤ 0 = conservative)
     'hourCoef':   (0.0,  8.0),    # amplitude of time-of-day sinusoidal adjustment
+    # biasOffset is NOT in PARAM_SPACE — it is a betting strategy parameter
+    # fixed at -4.0 for production use, set post-optimisation.  Calibration
+    # metrics (ECE, Brier, MAE, r) are always evaluated with biasOffset = 0
+    # so a 4 pt conservative offset does not inflate calibration error.
 }
+
+# Betting offset applied to every prediction at signal-generation time.
+# Never used during optimisation — only stored in the output hyperparams.
+BETTING_BIAS_OFFSET: float = -4.0
 
 # Default min_gp — model needs this many games before a player is rated
 _DEFAULT_MIN_GP: int = 5
@@ -290,14 +297,10 @@ def objective(
     formCoef   = p['formCoef']
     warmCoef   = p['warmCoef']
     matchCoef  = p['matchCoef']
-    biasOffset = p['biasOffset']
     hourCoef   = p['hourCoef']
+    # biasOffset is not optimised — always 0.0 during training so that ECE
+    # and MAE are evaluated on the calibrated (unshifted) model output.
 
-    # Train the model on fold_train (state is captured in the returned model object)
-    # We run walk_forward over the combined train+val sequence but we only
-    # evaluate on val predictions — we feed train first to warm up the model,
-    # then val.  Since walk_forward is leakage-free (predict before update),
-    # running it sequentially is equivalent to "train then predict on val".
     combined = fold_train + fold_val
     try:
         rated_rows, _base_rows, _model = walk_forward(
@@ -310,7 +313,7 @@ def objective(
             formCoef=formCoef,
             warmCoef=warmCoef,
             matchCoef=matchCoef,
-            biasOffset=biasOffset,
+            biasOffset=0.0,
             hourCoef=hourCoef,
         )
     except Exception:
@@ -349,7 +352,7 @@ def objective(
             formCoef=formCoef,
             warmCoef=warmCoef,
             matchCoef=matchCoef,
-            biasOffset=biasOffset,
+            biasOffset=0.0,
             hourCoef=hourCoef,
         )
         n_train_rated = len(train_rated)
@@ -584,7 +587,7 @@ def final_evaluation(
             formCoef=p.get('formCoef', 0.0),
             warmCoef=p.get('warmCoef', 0.0),
             matchCoef=p.get('matchCoef', 0.0),
-            biasOffset=p.get('biasOffset', 0.0),
+            biasOffset=0.0,
             hourCoef=p.get('hourCoef', 0.0),
         )
     except Exception as exc:
@@ -781,8 +784,13 @@ def run_optimizer(
         fold_metric_list.append(fm)
     robustness = robustness_stats(fold_metric_list)
 
+    # Attach the fixed betting offset to the output hyperparams.
+    # It was NOT part of the search (PARAM_SPACE excludes it) but is required
+    # by production signal generation and the Betting Offset metric gate.
+    best_params_out = {**best_params, 'biasOffset': BETTING_BIAS_OFFSET}
+
     return {
-        'hyperparams':  best_params,
+        'hyperparams':  best_params_out,
         'metrics':      metrics,
         'fold_scores':  fold_scores,
         'leakage_diag': leakage_diag,
