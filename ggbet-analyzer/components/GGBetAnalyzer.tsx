@@ -24,10 +24,67 @@ import {
 
 /* ----------------------------- palette ----------------------------------- */
 const C = {
-  bg: "#080b0a", surface: "#0f1413", surface2: "#141b19", border: "#1e2a26",
-  borderHi: "#2c3d37", text: "#e9f1ec", muted: "#7a8c84", faint: "#54635d",
-  accent: "#3df5a0", accentDim: "#1c6b48", pos: "#3df5a0", neg: "#ff5d52",
-  amber: "#ffc24b", blue: "#5fb0ff",
+  // Base
+  bg:               "#080808",
+  bgAlt:            "#0a0a0c",
+  // Glass surface fills — backdrop-filter does the heavy lifting
+  glass:            "rgba(255,255,255,0.055)",
+  glassHi:          "rgba(255,255,255,0.09)",
+  glassBorder:      "rgba(255,255,255,0.10)",
+  glassSpec:        "rgba(255,255,255,0.18)",   // specular top-edge highlight
+  glassInner:       "rgba(255,255,255,0.06)",   // inner ambient glow
+  // Accent-tinted glass (active / selected states)
+  glassAccent:      "rgba(168,180,175,0.10)",
+  glassAccentBorder:"rgba(168,180,175,0.28)",
+  glassAccentSpec:  "rgba(168,180,175,0.22)",
+  // Semantic tokens (unchanged)
+  text:       "#e9f1ec",
+  muted:      "#7a8c84",
+  faint:      "#54635d",
+  accent:     "#a8b4af",
+  accentDim:  "#2e3a36",
+  pos:        "#a8b4af",
+  neg:        "#ff5d52",
+  amber:      "#ffc24b",
+  blue:       "#5fb0ff",
+  // Aliased for any legacy references
+  surface:    "rgba(255,255,255,0.055)",
+  surface2:   "rgba(255,255,255,0.08)",
+  border:     "rgba(255,255,255,0.09)",
+  borderHi:   "rgba(255,255,255,0.18)",
+};
+
+/* ----------------------------- glass mixins ------------------------------ */
+const GLASS: React.CSSProperties = {
+  background:              C.glass,
+  backdropFilter:          "blur(24px) saturate(180%)",
+  WebkitBackdropFilter:    "blur(24px) saturate(180%)",
+  border:                  `1px solid ${C.glassBorder}`,
+  boxShadow: [
+    `inset 0 1px 0 ${C.glassSpec}`,
+    `inset 0 0 0 1px ${C.glassInner}`,
+    "0 8px 32px rgba(0,0,0,0.40)",
+    "0 2px 8px rgba(0,0,0,0.20)",
+  ].join(", "),
+  borderRadius: 16,
+};
+const GLASS_ACTIVE: React.CSSProperties = {
+  ...GLASS,
+  background:  C.glassAccent,
+  border:      `1px solid ${C.glassAccentBorder}`,
+  boxShadow: [
+    `inset 0 1px 0 ${C.glassAccentSpec}`,
+    "inset 0 0 0 1px rgba(168,180,175,0.08)",
+    "0 8px 32px rgba(0,0,0,0.40)",
+    "0 0 20px rgba(168,180,175,0.12)",
+  ].join(", "),
+};
+const GLASS_INPUT: React.CSSProperties = {
+  background:           "rgba(0,0,0,0.30)",
+  backdropFilter:       "blur(12px)",
+  WebkitBackdropFilter: "blur(12px)",
+  border:               `1px solid ${C.glassBorder}`,
+  boxShadow:            "inset 0 2px 4px rgba(0,0,0,0.20)",
 };
 
 /* ----------------------------- math core --------------------------------- */
@@ -313,9 +370,21 @@ interface UpcomingGame {
    ATOMS
    ========================================================================== */
 const Card = ({ children, style, glow }: { children?: React.ReactNode; style?: React.CSSProperties; glow?: boolean }) => (
-  <div style={{ background: C.surface, border: `1px solid ${glow ? C.accentDim : C.border}`,
-    borderRadius: 14, padding: 18, boxShadow: glow ? `0 0 0 1px ${C.accentDim}, 0 8px 30px -18px ${C.accent}` : "0 8px 24px -20px #000",
-    ...style }}>{children}</div>
+  <div style={{
+    ...GLASS,
+    borderRadius: 16,
+    padding: 18,
+    ...(glow ? {
+      background:  C.glassAccent,
+      border:      `1px solid ${C.glassAccentBorder}`,
+      boxShadow: [
+        `inset 0 1px 0 ${C.glassAccentSpec}`,
+        "0 8px 32px rgba(0,0,0,0.40)",
+        "0 0 24px rgba(168,180,175,0.10)",
+      ].join(", "),
+    } : {}),
+    ...style,
+  }}>{children}</div>
 );
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
@@ -323,43 +392,79 @@ const Label = ({ children }: { children?: React.ReactNode }) => (
 );
 
 const Badge = ({ tone = "muted", children }: { tone?: string; children?: React.ReactNode }) => {
-  const map: Record<string, string[]> = { pos: [C.pos, "#0c2a1d"], neg: [C.neg, "#2e1210"], amber: [C.amber, "#2c2310"],
-    blue: [C.blue, "#0f2334"], muted: [C.muted, C.surface2] };
-  const [fg, bg] = map[tone] || map.muted;
-  return <span style={{ color: fg, background: bg, border: `1px solid ${fg}33`, padding: "2px 9px",
-    borderRadius: 999, fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", whiteSpace: "nowrap" }}>{children}</span>;
+  const map: Record<string, string> = { pos: C.pos, neg: C.neg, amber: C.amber, blue: C.blue, muted: C.muted };
+  const fg = map[tone] || C.muted;
+  return (
+    <span style={{
+      color: fg,
+      background: `${fg}1a`,
+      border: `1px solid ${fg}40`,
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      boxShadow: `inset 0 1px 0 ${fg}22`,
+      padding: "2px 9px",
+      borderRadius: 999,
+      fontSize: 11,
+      fontWeight: 700,
+      fontFamily: "'JetBrains Mono', monospace",
+      whiteSpace: "nowrap",
+    }}>{children}</span>
+  );
 };
 
-const selStyle = { width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`,
-  borderRadius: 9, color: C.text, padding: "9px 10px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" };
+const selStyle: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box",
+  ...GLASS_INPUT,
+  borderRadius: 9, color: C.text, padding: "9px 10px",
+  fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none",
+};
 
 const Field = ({ label, value, onChange, type = "text", placeholder, step, mono = true, width }: { label?: string; value?: string | number; onChange: (v: string) => void; type?: string; placeholder?: string; step?: string | number; mono?: boolean; width?: string | number }) => (
   <div style={{ width }}>
     {label && <Label>{label}</Label>}
     <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} type={type} step={step} placeholder={placeholder}
-      style={{ width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`,
+      style={{ width: "100%", boxSizing: "border-box", ...GLASS_INPUT,
         borderRadius: 9, padding: "9px 11px", color: C.text, fontSize: 13.5,
         fontFamily: mono ? "'JetBrains Mono', monospace" : "'Archivo', sans-serif", outline: "none" }}
-      onFocus={(e) => (e.target.style.borderColor = C.accentDim)}
-      onBlur={(e) => (e.target.style.borderColor = C.border)} />
+      onFocus={(e) => { e.target.style.borderColor = C.glassAccentBorder; e.target.style.boxShadow = `inset 0 2px 4px rgba(0,0,0,0.20), 0 0 0 1px ${C.glassAccentBorder}`; }}
+      onBlur={(e) => { e.target.style.borderColor = C.glassBorder; e.target.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.20)"; }} />
   </div>
 );
 
 const Btn = ({ children, onClick, kind = "ghost", disabled, style }: { children?: React.ReactNode; onClick?: () => void; kind?: string; disabled?: boolean; style?: React.CSSProperties }) => {
   const kinds: Record<string, React.CSSProperties> = {
-    primary: { background: C.accent, color: "#04130c", border: `1px solid ${C.accent}`, fontWeight: 800 },
-    ghost: { background: "transparent", color: C.text, border: `1px solid ${C.borderHi}` },
-    danger: { background: "transparent", color: C.neg, border: `1px solid ${C.neg}55` },
+    primary: {
+      background: "rgba(168,180,175,0.14)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+      border: "1px solid rgba(168,180,175,0.32)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 0 14px rgba(168,180,175,0.12)",
+      color: C.accent,
+      fontWeight: 700,
+    },
+    ghost: {
+      ...GLASS_INPUT,
+      color: C.muted,
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10)",
+    },
+    danger: {
+      background: "rgba(255,93,82,0.12)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+      border: "1px solid rgba(255,93,82,0.28)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10)",
+      color: C.neg,
+    },
   };
   return (
     <button onClick={onClick} disabled={disabled}
       style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 14px", borderRadius: 9,
         fontSize: 13, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1,
-        fontFamily: "'Archivo', sans-serif", letterSpacing: 0.3, transition: "transform .08s ease, filter .15s",
+        fontFamily: "'Archivo', sans-serif", letterSpacing: 0.3, transition: "transform .08s ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease",
         ...kinds[kind], ...style }}
-      onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(1px)")}
-      onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0)")}
-      onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}>{children}</button>
+      onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+      onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}>{children}</button>
   );
 };
 
@@ -373,8 +478,8 @@ const Stat = ({ label, value, sub, tone }: { label?: React.ReactNode; value?: Re
 );
 
 const Empty = ({ icon, title, body }: { icon?: React.ReactNode; title?: React.ReactNode; body?: React.ReactNode }) => (
-  <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted }}>
-    <div style={{ display: "inline-flex", padding: 16, borderRadius: 14, background: C.surface2, border: `1px solid ${C.border}`, marginBottom: 14 }}>{icon}</div>
+  <div style={{ ...GLASS, borderRadius: 16, padding: "48px 32px", textAlign: "center", color: C.muted }}>
+    <div style={{ display: "inline-flex", padding: 20, borderRadius: "50%", ...GLASS, marginBottom: 18 }}>{icon}</div>
     <div style={{ fontSize: 16, color: C.text, fontWeight: 700, marginBottom: 6 }}>{title}</div>
     <div style={{ fontSize: 13, maxWidth: 420, margin: "0 auto", lineHeight: 1.5 }}>{body}</div>
   </div>
@@ -456,27 +561,55 @@ export default function GGBetAnalyzer() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Archivo', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
         ::-webkit-scrollbar { width: 9px; height: 9px; }
-        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 9px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 9px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::selection { background: ${C.accent}33; }
         input::placeholder { color: ${C.faint}; }
+        :focus-visible { outline: 2px solid rgba(168,180,175,0.60); outline-offset: 2px; }
         @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .rise { animation: rise .4s ease both; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
         .live { animation: pulse 1.8s ease-in-out infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         select { -webkit-appearance:none; appearance:none; }
+        button:not(:disabled):hover { filter: brightness(1.08); }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
       `}</style>
 
-      {/* atmospheric backdrop */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none",
-        background: `radial-gradient(1100px 480px at 78% -10%, ${C.accent}0d, transparent 60%), radial-gradient(900px 500px at 0% 110%, ${C.blue}08, transparent 55%)` }} />
+      {/* atmospheric smoke backdrop */}
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
+        {/* Primary left smoke column */}
+        <div style={{ position: "absolute", left: "-8%", top: "18%", width: "58%", height: "88%",
+          background: "rgba(255,255,255,0.055)", filter: "blur(72px)", transform: "rotate(-18deg)",
+          borderRadius: "35% 65% 55% 45% / 55% 38% 62% 45%" }} />
+        {/* Secondary right wisp */}
+        <div style={{ position: "absolute", right: "-5%", top: "12%", width: "52%", height: "78%",
+          background: "rgba(255,255,255,0.032)", filter: "blur(90px)", transform: "rotate(14deg)",
+          borderRadius: "60% 40% 35% 65% / 45% 65% 35% 55%" }} />
+        {/* Thin center connecting wisp */}
+        <div style={{ position: "absolute", left: "18%", top: "42%", width: "65%", height: "22%",
+          background: "rgba(255,255,255,0.028)", filter: "blur(55px)", transform: "rotate(-8deg)",
+          borderRadius: "50% 50% 50% 50% / 30% 70% 30% 70%" }} />
+        {/* Bottom-left anchor smoke */}
+        <div style={{ position: "absolute", left: "-2%", bottom: "0%", width: "42%", height: "42%",
+          background: "rgba(255,255,255,0.048)", filter: "blur(60px)", transform: "rotate(-6deg)",
+          borderRadius: "40% 60% 60% 40% / 50% 42% 58% 50%" }} />
+        {/* Upper-right subtle wisp */}
+        <div style={{ position: "absolute", right: "8%", top: "5%", width: "30%", height: "32%",
+          background: "rgba(255,255,255,0.022)", filter: "blur(80px)",
+          borderRadius: "55% 45% 45% 55% / 45% 55% 45% 55%" }} />
+      </div>
 
       {/* header */}
-      <header style={{ position: "sticky", top: 0, zIndex: 20, backdropFilter: "blur(10px)",
-        background: `${C.bg}d9`, borderBottom: `1px solid ${C.border}`, padding: "14px 22px",
+      <header style={{ position: "sticky", top: 0, zIndex: 20,
+        background: "rgba(8,8,8,0.65)",
+        backdropFilter: "blur(32px) saturate(180%)",
+        WebkitBackdropFilter: "blur(32px) saturate(180%)",
+        borderBottom: `1px solid ${C.glassBorder}`,
+        boxShadow: `inset 0 -1px 0 ${C.glassInner}, 0 1px 0 rgba(255,255,255,0.04)`,
+        padding: "14px 22px",
         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: C.accent, color: "#04130c",
@@ -495,32 +628,62 @@ export default function GGBetAnalyzer() {
             <span className="live" style={{ width: 7, height: 7, borderRadius: 99, background: C.accent }} />
             {clock.toLocaleTimeString([], { hour12: false })}
           </div>
-          <button onClick={() => setLateNight((v) => !v)} title="Toggle late-night fatigue model"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: lateNight ? "#1a1407" : C.surface2,
-              color: lateNight ? C.amber : C.muted, border: `1px solid ${lateNight ? C.amber + "55" : C.border}`,
-              borderRadius: 9, padding: "7px 11px", cursor: "pointer", fontSize: 12, fontFamily: "'Archivo'" }}>
+          <button onClick={() => setLateNight((v) => !v)} title="Toggle late-night fatigue model" aria-pressed={lateNight}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6,
+              background: lateNight ? "rgba(255,194,75,0.12)" : C.glass,
+              backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+              color: lateNight ? C.amber : C.muted,
+              border: `1px solid ${lateNight ? "rgba(255,194,75,0.30)" : C.glassBorder}`,
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10)",
+              borderRadius: 9, padding: "7px 11px", cursor: "pointer", fontSize: 12, fontFamily: "'Archivo'",
+              transition: "background 180ms ease, border-color 180ms ease" }}>
             {lateNight ? <Moon size={14} /> : <Sun size={14} />}{lateNight ? "Late-night" : "Daytime"}
           </button>
         </div>
       </header>
 
       {/* tab nav */}
-      <nav style={{ display: "flex", gap: 6, padding: "14px 22px 0", flexWrap: "wrap" }}>
-        {TABS.map((t) => {
-          const on = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 15px",
-                borderRadius: "10px 10px 0 0", border: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
-                background: on ? C.surface : "transparent", color: on ? C.text : C.muted,
-                cursor: "pointer", fontSize: 13.5, fontWeight: on ? 700 : 500, fontFamily: "'Archivo'" }}>
-              <span style={{ color: on ? C.accent : C.faint }}>{t.icon}</span>{t.label}
-            </button>
-          );
-        })}
+      <nav role="tablist" aria-label="Sections" style={{ padding: "16px 22px 0", display: "flex", justifyContent: "center" }}>
+        <div style={{
+          display: "inline-flex", flexWrap: "wrap", gap: 2, padding: 4,
+          background: "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(16px) saturate(150%)",
+          WebkitBackdropFilter: "blur(16px) saturate(150%)",
+          border: `1px solid ${C.glassBorder}`,
+          boxShadow: `inset 0 1px 0 ${C.glassSpec}, inset 0 0 0 1px ${C.glassInner}, 0 8px 32px rgba(0,0,0,0.40)`,
+          borderRadius: 14,
+        }}>
+          {TABS.map((t) => {
+            const on = tab === t.id;
+            return (
+              <button key={t.id} role="tab" aria-selected={on} id={`tab-${t.id}`} onClick={() => setTab(t.id)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
+                  borderRadius: 10,
+                  ...(on ? {
+                    background: C.glassAccent,
+                    border: `1px solid ${C.glassAccentBorder}`,
+                    boxShadow: [
+                      `inset 0 1px 0 ${C.glassAccentSpec}`,
+                      "inset 0 0 0 1px rgba(168,180,175,0.08)",
+                      "0 4px 12px rgba(0,0,0,0.30)",
+                      "0 0 16px rgba(168,180,175,0.10)",
+                    ].join(", "),
+                    color: C.text,
+                  } : {
+                    background: "transparent",
+                    border: "1px solid transparent",
+                    color: C.muted,
+                  }),
+                  cursor: "pointer", fontSize: 13, fontWeight: on ? 700 : 500, fontFamily: "'Archivo'",
+                  transition: "background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease" }}>
+                <span style={{ color: on ? C.accent : C.faint }}>{t.icon}</span>{t.label}
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
-      <main style={{ position: "relative", padding: "22px", maxWidth: 1180, margin: "0 auto" }}>
+      <main style={{ position: "relative", padding: "22px", maxWidth: 1280, margin: "0 auto" }}>
         {!loaded ? (
           <div style={{ color: C.muted, padding: 40, textAlign: "center" }}>Loading terminal…</div>
         ) : tab === "data" ? (
