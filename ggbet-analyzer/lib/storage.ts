@@ -7,6 +7,7 @@ export const STORAGE_KEYS = {
   bets: "ggba:bets",
   settings: "ggba:settings",
   walkforward: "ggba:walkforward",
+  anthropicKey: "ggba:anthropic_key",
 } as const;
 
 const mem: Record<string, unknown> = {};

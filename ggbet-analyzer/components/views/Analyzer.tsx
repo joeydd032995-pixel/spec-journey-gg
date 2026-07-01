@@ -128,7 +128,7 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
       {/* setup strip */}
       <Card>
-        <div style={{ display: "grid", gridTemplateColumns: settings.modelMode === "rated" && teamOpts.length > 0 ? "2fr 1fr 2fr 1fr" : "1fr 1fr", gap: SP.md, alignItems: "end" }}>
+        <div className="ggba-cols" style={{ "--cols": settings.modelMode === "rated" && teamOpts.length > 0 ? "2fr 1fr 2fr 1fr" : "1fr 1fr", gap: SP.md, alignItems: "end" } as React.CSSProperties}>
           <PlayerSelect label="Player 1 (home line)" players={players} value={n1} onChange={setN1} />
           {settings.modelMode === "rated" && teamOpts.length > 0 && (
             <div>
@@ -167,7 +167,7 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
         <Card><Empty icon={<Crosshair size={26} color={C.muted} />} title="Pick a matchup"
           body="Select two players above to generate total, moneyline and spread projections with edge detection." /></Card>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(300px, 2fr)", gap: SP.lg, alignItems: "start" }}>
+        <div className="ggba-cols" style={{ "--cols": "minmax(0, 3fr) minmax(0, 2fr)" } as React.CSSProperties}>
           {/* projection panel */}
           <div style={{ display: "grid", gap: SP.lg, minWidth: 0 }}>
             <Card glow>

@@ -10,6 +10,7 @@ import {
   buildRatingsModel, computeProjection, efficiency, leagueMeanPpm, winProb,
   type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
+import { STORAGE_KEYS as K, loadKey } from "@/lib/storage";
 import { Btn, Card, PlayerSelect } from "@/components/ui";
 
 interface ChatMessage { role: "user" | "assistant"; content: string }
@@ -55,7 +56,8 @@ export default function AIAssistant({ players, settings, lateNight, wf }: {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system: buildContext(), messages: next }),
+        // apiKey: the user's own key from Settings; ignored when the server has one
+        body: JSON.stringify({ system: buildContext(), messages: next, apiKey: loadKey<string>(K.anthropicKey, "") }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

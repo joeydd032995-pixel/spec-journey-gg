@@ -6,8 +6,8 @@
    ========================================================================== */
 import React, { useState, useEffect } from "react";
 import {
-  Database, Crosshair, ClipboardList, LineChart as LineIcon, Bot,
-  Calendar, Moon, Sun,
+  Database, Crosshair, ClipboardList, Bot,
+  Calendar, Moon, Sun, Settings as SettingsIcon,
 } from "lucide-react";
 
 import { C, FONT, SP, RADIUS } from "@/lib/theme";
@@ -21,16 +21,17 @@ import UpcomingGamesFeed from "@/components/views/UpcomingGames";
 import BetLogger from "@/components/views/BetLogger";
 import Insights from "@/components/views/Insights";
 import AIAssistant from "@/components/views/AIAssistant";
+import SettingsView from "@/components/views/Settings";
 
-type TabId = "data" | "analyze" | "upcoming" | "log" | "insights" | "ai";
+type TabId = "data" | "analyze" | "upcoming" | "log" | "ai" | "settings";
 
 const NAV: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: "analyze", label: "Analyzer", icon: <Crosshair size={16} /> },
   { id: "upcoming", label: "Upcoming", icon: <Calendar size={16} /> },
   { id: "log", label: "Bet Ledger", icon: <ClipboardList size={16} /> },
-  { id: "insights", label: "Insights", icon: <LineIcon size={16} /> },
   { id: "data", label: "Data", icon: <Database size={16} /> },
   { id: "ai", label: "AI Analyst", icon: <Bot size={16} /> },
+  { id: "settings", label: "Settings", icon: <SettingsIcon size={16} /> },
 ];
 
 export default function GGBetAnalyzer() {
@@ -75,7 +76,7 @@ export default function GGBetAnalyzer() {
     setUpcomingLoading(true);
     setUpcomingError(null);
     try {
-      const res = await fetch("/api/upcoming-feed?days=2&history=60");
+      const res = await fetch("/api/upcoming-feed?days=2&history=30");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (gen === upcomingGenRef.current) setUpcoming(data.upcoming || []);
@@ -118,6 +119,14 @@ export default function GGBetAnalyzer() {
           border-right: 1px solid ${C.border}; background: ${C.surface}; z-index: 20; }
         .ggba-main { margin-left: 212px; padding: ${SP.xl}px; max-width: 1440px; }
         .ggba-nav-label { display: inline; }
+        /* Responsive multi-column layout: set --cols inline for the desktop template;
+           below the breakpoint every instance recomposes to a single column so
+           content can never squeeze into overlapping slivers on phones. */
+        .ggba-cols { display: grid; gap: ${SP.lg}px; align-items: start; grid-template-columns: var(--cols, 1fr); }
+        .ggba-cols > * { min-width: 0; }
+        @media (max-width: 1080px) {
+          .ggba-cols { grid-template-columns: 1fr; }
+        }
         @media (max-width: 900px) {
           .ggba-sidebar { width: 60px; }
           .ggba-main { margin-left: 60px; padding: ${SP.lg}px; }
@@ -182,14 +191,19 @@ export default function GGBetAnalyzer() {
           <DataManager players={players} setPlayers={setPlayers} matches={matches} setMatches={setMatches}
             wf={wf} setWf={setWf} settings={settings} setSettings={setSettings} />
         ) : tab === "analyze" ? (
-          <Analyzer players={players} settings={settings} lateNight={lateNight} matches={matches} wf={wf}
-            onLog={(b: Bet) => setBets((p) => [b, ...p])} />
+          // Analyzer + Insights share one screen: run a matchup, then read the
+          // ledger/CLV/backtest evidence right below it without switching views.
+          <div style={{ display: "grid", gap: SP.lg }}>
+            <Analyzer players={players} settings={settings} lateNight={lateNight} matches={matches} wf={wf}
+              onLog={(b: Bet) => setBets((p) => [b, ...p])} />
+            <Insights bets={bets} matches={matches} players={players} settings={settings} lateNight={lateNight} wf={wf} />
+          </div>
         ) : tab === "upcoming" ? (
           <UpcomingGamesFeed upcoming={upcoming} loading={upcomingLoading} error={upcomingError} onRefresh={fetchUpcomingFeed} />
         ) : tab === "log" ? (
           <BetLogger bets={bets} setBets={setBets} />
-        ) : tab === "insights" ? (
-          <Insights bets={bets} matches={matches} players={players} settings={settings} lateNight={lateNight} wf={wf} />
+        ) : tab === "settings" ? (
+          <SettingsView />
         ) : (
           <AIAssistant players={players} settings={settings} lateNight={lateNight} wf={wf} />
         )}

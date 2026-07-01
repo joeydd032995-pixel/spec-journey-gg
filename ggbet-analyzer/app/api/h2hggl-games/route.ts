@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { fetchFeed } from "@/lib/h2hggl";
+import { fetchFeed, isDefaultUrl } from "@/lib/h2hggl";
 
 export const maxDuration = 60;
 
@@ -27,14 +27,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(feed);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
-      {
-        error:
-          `${message}. Is the scraper running and H2HGGL_API_URL set? ` +
-          `See /scraper (uvicorn app.main:app or docker compose up).`,
-      },
-      { status: 502 }
-    );
+    const hint = isDefaultUrl()
+      ? "h2hggl.com's public API may be slow or briefly unavailable — try again."
+      : "Is the scraper running and H2HGGL_API_URL correct? See /scraper.";
+    return NextResponse.json({ error: `${message}. ${hint}` }, { status: 502 });
   }
 }
 

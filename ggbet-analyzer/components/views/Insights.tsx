@@ -196,7 +196,7 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
               <Stat label="Beat-close rate" value={`${clvStats.beatRate!.toFixed(0)}%`} tone={clvStats.beatRate! > 50 ? C.pos : C.amber} sub="bets that beat the close" />
               <Stat label="Bets w/ close" value={clvStats.n} sub={`of ${bets.length} logged`} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: SP.md }}>
+            <div className="ggba-cols" style={{ "--cols": "1.4fr 1fr", gap: SP.md } as React.CSSProperties}>
               <div style={{ height: 190 }}>
                 <div style={{ fontSize: 10, color: C.muted, marginBottom: SP.xs }}>Cumulative CLV (units of %)</div>
                 <ResponsiveContainer>

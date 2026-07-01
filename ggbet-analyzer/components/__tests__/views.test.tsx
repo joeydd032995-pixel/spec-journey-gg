@@ -6,6 +6,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import BetLogger from "@/components/views/BetLogger";
 import UpcomingGamesFeed from "@/components/views/UpcomingGames";
 import Analyzer from "@/components/views/Analyzer";
+import Settings from "@/components/views/Settings";
 import { DEFAULT_SETTINGS, type Bet, type Player } from "@/lib/model";
 import type { UpcomingGame } from "@/lib/upcoming";
 
@@ -100,6 +101,64 @@ describe("UpcomingGamesFeed", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     rerender(<UpcomingGamesFeed upcoming={[]} loading={true} error={null} onRefresh={onRefresh} />);
     expect(screen.getByRole("button", { name: /Loading/ })).toBeDisabled();
+  });
+});
+
+describe("Settings", () => {
+  function stubFetch(routes: Record<string, unknown> = {}) {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/status")) {
+        return new Response(JSON.stringify({ dataSource: "direct", scraperUrl: null, aiConfigured: false, betsapiConfigured: false, ...(routes.status as object) }), { status: 200 });
+      }
+      if (url.includes("/api/assistant")) {
+        const body = routes.assistant as { status?: number; json?: unknown } | undefined;
+        return new Response(JSON.stringify(body?.json ?? { ok: true }), { status: body?.status ?? 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }));
+  }
+
+  it("saves the API key to localStorage and can remove it", async () => {
+    localStorage.clear();
+    stubFetch();
+    render(<Settings />);
+    fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant-test-123" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save key/ }));
+    expect(JSON.parse(localStorage.getItem("ggba:anthropic_key")!)).toBe("sk-ant-test-123");
+    expect(screen.getByText("Key saved to this browser.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
+    expect(JSON.parse(localStorage.getItem("ggba:anthropic_key")!)).toBe("");
+    vi.unstubAllGlobals();
+  });
+
+  it("tests the key against the server and reports success", async () => {
+    localStorage.clear();
+    stubFetch({ assistant: { status: 200, json: { ok: true } } });
+    render(<Settings />);
+    fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant-test-123" } });
+    fireEvent.click(screen.getByRole("button", { name: /Test key/ }));
+    expect(await screen.findByText(/Key works/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports an invalid key", async () => {
+    localStorage.clear();
+    stubFetch({ assistant: { status: 401, json: { error: "Invalid API key." } } });
+    render(<Settings />);
+    fireEvent.change(screen.getByLabelText("Anthropic API key"), { target: { value: "sk-ant-bad" } });
+    fireEvent.click(screen.getByRole("button", { name: /Test key/ }));
+    expect(await screen.findByText("Invalid API key.")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the data-source mode from /api/status", async () => {
+    localStorage.clear();
+    stubFetch({ status: { dataSource: "scraper", scraperUrl: "https://scraper.example.com" } });
+    render(<Settings />);
+    expect(await screen.findByText("self-hosted scraper")).toBeInTheDocument();
+    expect(screen.getByText(/scraper\.example\.com/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 });
 

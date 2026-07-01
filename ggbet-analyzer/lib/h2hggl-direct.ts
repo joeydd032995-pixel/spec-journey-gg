@@ -54,21 +54,25 @@ function dayIso(offsetDays: number): string {
   return d.toISOString().slice(0, 10) + "T00:00:00+00:00";
 }
 
-async function fetchScheduleDay(dateIso: string): Promise<unknown[]> {
+async function fetchScheduleDay(dateIso: string, revalidate: number): Promise<unknown[]> {
   const data = await apiGet(
     `schedule/${API_SPORT}?date=${encodeURIComponent(dateIso)}`,
-    120,
+    revalidate,
   );
   return Array.isArray(data) ? data : [];
 }
 
-/** Fetch multiple days, batched to 8 concurrent requests at a time. */
+/** Fetch multiple days, batched to 8 concurrent requests at a time.
+    Past days are final results — cache them for 6h so repeat loads only
+    re-fetch today/future instead of hammering the public API. */
 async function fetchDays(offsets: number[]): Promise<unknown[]> {
   const results: unknown[] = [];
   const batchSize = 8;
   for (let i = 0; i < offsets.length; i += batchSize) {
     const batch = offsets.slice(i, i + batchSize);
-    const chunk = await Promise.all(batch.map((d) => fetchScheduleDay(dayIso(d))));
+    const chunk = await Promise.all(
+      batch.map((d) => fetchScheduleDay(dayIso(d), d < 0 ? 21600 : 120)),
+    );
     results.push(...chunk.flat());
   }
   return results;
