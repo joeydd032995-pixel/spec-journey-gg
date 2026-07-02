@@ -35,11 +35,16 @@ export async function GET(req: NextRequest) {
   if (isDefaultUrl()) {
     try {
       const { buildUpcomingFeedDirect } = await import("@/lib/h2hggl-direct");
-      const data = await buildUpcomingFeedDirect(days, history);
+      // Direct mode fires one upstream request per history day; cap it so the
+      // serverless function stays well inside its execution limit.
+      const data = await buildUpcomingFeedDirect(days, Math.min(history, 30));
       return NextResponse.json(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: message }, { status: 502 });
+      return NextResponse.json(
+        { error: `h2hggl.com feed unavailable: ${message}` },
+        { status: 502 },
+      );
     }
   }
 

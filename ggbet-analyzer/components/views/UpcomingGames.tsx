@@ -26,7 +26,7 @@ export default function UpcomingGamesFeed({ upcoming, loading, error, onRefresh 
         {error && (
           <div style={{ color: C.neg, fontSize: 13, marginBottom: SP.md, padding: "8px 12px",
             background: `${C.negBg}33`, borderRadius: RADIUS.md, border: `1px solid ${C.neg}44` }}>
-            {error} — is the scraper running?
+            {error} — the data source may be slow or briefly unavailable; try Refresh.
           </div>
         )}
 

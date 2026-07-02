@@ -10,18 +10,34 @@ export const dynamic = "force-dynamic";
 interface ChatMessage { role: "user" | "assistant"; content: string }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: "AI assistant is not configured. Set ANTHROPIC_API_KEY on the server." },
-      { status: 503 },
-    );
-  }
-
-  let body: { system?: string; messages?: ChatMessage[] };
+  let body: { system?: string; messages?: ChatMessage[]; apiKey?: string; mode?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  // Server-configured key wins; otherwise use the caller's own key from the
+  // Settings view (kept in their browser, forwarded only for this request).
+  const apiKey = process.env.ANTHROPIC_API_KEY || (typeof body.apiKey === "string" ? body.apiKey.trim() : "");
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "AI assistant is not configured. Add your Anthropic API key in Settings (or set ANTHROPIC_API_KEY on the server)." },
+      { status: 503 },
+    );
+  }
+
+  // Key check from Settings: one free metadata call, no tokens spent.
+  if (body.mode === "test") {
+    try {
+      await new Anthropic({ apiKey }).models.retrieve("claude-opus-4-8");
+      return NextResponse.json({ ok: true });
+    } catch (e) {
+      if (e instanceof Anthropic.AuthenticationError) {
+        return NextResponse.json({ error: "Invalid API key." }, { status: 401 });
+      }
+      return NextResponse.json({ error: "Could not verify the key — try again." }, { status: 502 });
+    }
   }
 
   const messages = (body.messages || []).filter(
@@ -32,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No messages provided." }, { status: 400 });
   }
 
-  const client = new Anthropic();
+  const client = new Anthropic({ apiKey });
   try {
     const response = await client.messages.create({
       model: "claude-opus-4-8",
@@ -48,6 +64,9 @@ export async function POST(req: NextRequest) {
       .trim();
     return NextResponse.json({ text });
   } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) {
+      return NextResponse.json({ error: "Invalid API key — check it in Settings." }, { status: 401 });
+    }
     if (e instanceof Anthropic.RateLimitError) {
       return NextResponse.json({ error: "Rate limited — try again shortly." }, { status: 429 });
     }

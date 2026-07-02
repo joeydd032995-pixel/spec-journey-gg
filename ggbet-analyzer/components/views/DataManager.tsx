@@ -36,7 +36,7 @@ export default function DataManager({ players, setPlayers, matches, setMatches, 
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
       <FetchCard setPlayers={setPlayers} setMatches={setMatches} setWf={setWf} />
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: SP.lg, alignItems: "start" }}>
+      <div className="ggba-cols" style={{ "--cols": "minmax(0, 2fr) minmax(0, 1fr)" } as React.CSSProperties}>
         <div style={{ display: "grid", gap: SP.lg, minWidth: 0 }}>
           <RosterCard players={players} setPlayers={setPlayers} onEdit={setDraft} />
           <MatchEntry matches={matches} setMatches={setMatches} players={players} />
@@ -104,7 +104,7 @@ function FetchCard({ setPlayers, setMatches, setWf }: { setPlayers: SetPlayers; 
     <Card glow>
       <CardHeader icon={<Download size={15} />} title="Fetch live data"
         sub={source === "h2hggl"
-          ? "Free H2H GG League scraper — games, players, FG% / steals / fouls, walk-forward snapshots in one click. Needs the scraper running with H2HGGL_API_URL set (see /scraper)."
+          ? "Free H2H GG League data — games, players, FG% / steals / fouls, walk-forward snapshots in one click. Works out of the box via h2hggl.com's public API; optionally point H2HGGL_API_URL at the self-hosted scraper (see /scraper) for cached responses."
           : "BetsAPI fallback (paid) — requires BETSAPI_TOKEN; FG%, steals & fouls are not in this feed."}
         actions={
           <div style={{ display: "flex", gap: SP.sm, flexWrap: "wrap", alignItems: "flex-end" }}>

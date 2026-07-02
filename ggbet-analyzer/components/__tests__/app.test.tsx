@@ -11,7 +11,13 @@ class RO { observe() {} unobserve() {} disconnect() {} }
 describe("app shell", () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ upcoming: [] }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/status")) {
+        return new Response(JSON.stringify({ dataSource: "direct", scraperUrl: null, aiConfigured: false, betsapiConfigured: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ upcoming: [] }), { status: 200 });
+    }));
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -21,10 +27,27 @@ describe("app shell", () => {
   it("hydrates and shows the sidebar navigation", async () => {
     render(<GGBetAnalyzer />);
     expect(await screen.findByText("Analyzer")).toBeInTheDocument();
-    ["Upcoming", "Bet Ledger", "Insights", "Data", "AI Analyst"].forEach((label) =>
+    ["Upcoming", "Bet Ledger", "Data", "AI Analyst", "Settings"].forEach((label) =>
       expect(screen.getByText(label)).toBeInTheDocument());
+    // Insights is merged into the Analyzer, not a separate nav item
+    expect(screen.queryByText("Insights")).not.toBeInTheDocument();
     // default view is the Analyzer's empty state prompt
     expect(screen.getByText(/Add at least 2 players/)).toBeInTheDocument();
+  });
+
+  it("shows the merged Insights section inside the Analyzer view", async () => {
+    render(<GGBetAnalyzer />);
+    expect(await screen.findByText(/Add at least 2 players/)).toBeInTheDocument();
+    expect(screen.getByText("Performance at a glance")).toBeInTheDocument();
+    expect(screen.getByText(/Walk-forward backtest/)).toBeInTheDocument();
+  });
+
+  it("opens the Settings view with key entry and data-source status", async () => {
+    render(<GGBetAnalyzer />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    expect(screen.getByText("AI Analyst key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Anthropic API key")).toBeInTheDocument();
+    expect(await screen.findByText("direct · h2hggl.com")).toBeInTheDocument();
   });
 
   it("navigates between views", async () => {
@@ -51,6 +74,6 @@ describe("app shell", () => {
     render(<GGBetAnalyzer />);
     fireEvent.click(await screen.findByRole("button", { name: "Upcoming" }));
     expect(await screen.findByText("No upcoming games found")).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledWith("/api/upcoming-feed?days=2&history=60");
+    expect(fetch).toHaveBeenCalledWith("/api/upcoming-feed?days=2&history=30");
   });
 });
