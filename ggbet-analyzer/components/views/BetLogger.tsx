@@ -7,7 +7,7 @@ import { Check, ClipboardList, Trash2, X } from "lucide-react";
 
 import { C, FONT, SP, RADIUS } from "@/lib/theme";
 import { clvEv, num, payoutMult, type Bet } from "@/lib/model";
-import { Badge, Card, CardHeader, Empty, Stat, StatStrip, iconBtn, tdR } from "@/components/ui";
+import { Badge, Card, CardHeader, Empty, Hero, Stat, StatStrip, iconBtn, tdR } from "@/components/ui";
 
 type SetBets = React.Dispatch<React.SetStateAction<Bet[]>>;
 
@@ -32,19 +32,15 @@ export default function BetLogger({ bets, setBets }: { bets: Bet[]; setBets: Set
 
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
-      <Card>
-        <CardHeader icon={<ClipboardList size={15} />} title="Bet ledger"
-          sub={<>Bets logged from the Analyzer land here. Set your stake, settle Win / Loss / Push, and enter the <b style={{ color: C.accent }}>closing line</b> to track CLV — beating the close is the durable proxy for long-run +EV.</>} />
-        {bets.length > 0 && (
+      <Hero eyebrow="Bet Ledger" title="Track the close"
+        sub={<>Bets logged from the Analyzer land here. Set your stake, settle Win / Loss / Push, and enter the <b style={{ color: C.accent }}>closing line</b> to track CLV — beating the close is the durable proxy for long-run +EV.</>}
+        kpis={bets.length > 0 ? (
           <StatStrip>
             <Stat label="Open" value={open.length} />
-            <Stat label="Settled" value={closed.length} />
-            <Stat label="Staked" value={`${totalStake.toFixed(1)}u`} />
             <Stat label="Net profit" value={`${totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(2)}u`} tone={totalProfit >= 0 ? C.pos : C.neg} />
             <Stat label="ROI" value={`${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`} tone={roi >= 0 ? C.pos : C.neg} />
           </StatStrip>
-        )}
-      </Card>
+        ) : undefined} />
 
       {bets.length === 0 ? (
         <Card><Empty icon={<ClipboardList size={26} color={C.muted} />} title="No bets yet"

@@ -13,8 +13,8 @@ import {
 } from "@/lib/model";
 import { downloadCsv, readFileAsText } from "@/lib/download";
 import {
-  Badge, Btn, Card, CardHeader, Empty, Field, FormDots, Hint, Label, Notice,
-  PlayerSelect, iconBtn, selStyle, tdR, thStyle,
+  Badge, Btn, Card, CardHeader, Empty, Field, FormDots, Hero, Hint, Label, Notice,
+  PlayerSelect, Stat, StatStrip, iconBtn, selStyle, tdR, thStyle,
 } from "@/components/ui";
 
 type Msg = { t: "pos" | "neg" | "amber"; m: string } | null;
@@ -35,6 +35,13 @@ export default function DataManager({ players, setPlayers, matches, setMatches, 
   const [draft, setDraft] = useState<Player>(blankPlayer());
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
+      <Hero eyebrow="Data" title="Your data, your model"
+        sub="Real data in, no fabricated rows. Fetch live, import CSVs, or enter players by hand — then tune the projection model."
+        kpis={<StatStrip>
+          <Stat label="Players" value={players.length} />
+          <Stat label="Matches" value={matches.length} />
+          <Stat label="WF rows" value={wf.length} />
+        </StatStrip>} />
       <FetchCard setPlayers={setPlayers} setMatches={setMatches} setWf={setWf} />
       <div className="ggba-cols" style={{ "--cols": "minmax(0, 2fr) minmax(0, 1fr)" } as React.CSSProperties}>
         <div style={{ display: "grid", gap: SP.lg, minWidth: 0 }}>

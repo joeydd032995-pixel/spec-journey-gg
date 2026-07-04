@@ -116,7 +116,7 @@ export default function GGBetAnalyzer() {
           .rise, .live { animation: none; }
         }
         .ggba-sidebar { position: fixed; inset: 0 auto 0 0; width: 212px; display: flex; flex-direction: column;
-          border-right: 1px solid ${C.border}; background: ${C.surface}; z-index: 20; }
+          border-right: 1px solid ${C.border}; background: ${C.surface2}; z-index: 20; }
         .ggba-main { margin-left: 212px; padding: ${SP.xl}px; max-width: 1440px; }
         .ggba-nav-label { display: inline; }
         /* Responsive multi-column layout: set --cols inline for the desktop template;
@@ -137,7 +137,7 @@ export default function GGBetAnalyzer() {
       {/* sidebar */}
       <aside className="ggba-sidebar">
         <div style={{ display: "flex", alignItems: "center", gap: SP.md, padding: `${SP.lg}px ${SP.lg}px ${SP.md}px` }}>
-          <div style={{ width: 32, height: 32, borderRadius: RADIUS.md, background: C.accent, color: "#04130c",
+          <div style={{ width: 32, height: 32, borderRadius: RADIUS.md, background: C.accent, color: C.onAccent,
             display: "grid", placeItems: "center", fontWeight: 900, fontSize: 17, flexShrink: 0 }}>G</div>
           <div className="ggba-nav-label" style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 900, letterSpacing: 0.5, fontSize: 14, whiteSpace: "nowrap" }}>
@@ -156,8 +156,8 @@ export default function GGBetAnalyzer() {
               <button key={t.id} onClick={() => setTab(t.id)} title={t.label}
                 style={{ display: "flex", alignItems: "center", gap: SP.md, padding: "10px 12px", minHeight: 40,
                   borderRadius: RADIUS.md, border: "none", width: "100%", textAlign: "left",
-                  background: on ? C.surface3 : "transparent", color: on ? C.text : C.muted,
-                  cursor: "pointer", fontSize: 13, fontWeight: on ? 700 : 500, fontFamily: FONT.ui }}>
+                  background: on ? C.accentBg : "transparent", color: on ? C.accentDim : C.muted,
+                  cursor: "pointer", fontSize: 13, fontWeight: on ? 800 : 500, fontFamily: FONT.ui }}>
                 <span style={{ color: on ? C.accent : C.faint, display: "inline-flex", flexShrink: 0 }}>{t.icon}</span>
                 <span className="ggba-nav-label">{t.label}</span>
               </button>

@@ -16,7 +16,7 @@ import {
   type Bet, type BookQuote, type MatchResult, type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
 import {
-  Badge, Btn, Card, CardHeader, Empty, FactorPill, Field, Hint, Label,
+  Badge, Btn, Card, CardHeader, Empty, FactorPill, Field, Hero, Hint, Label,
   PlayerSelect, Stat, StatStrip, inputStyle, selStyle, tipStyle,
 } from "@/components/ui";
 
@@ -126,6 +126,19 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
 
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
+      <Hero eyebrow="Matchup Analyzer"
+        title={p1 && p2 ? <>{p1.name} <span style={{ color: C.faint }}>vs</span> {p2.name}</> : "Find your edge"}
+        sub={p1 && p2
+          ? "Total, moneyline and spread projections with edge detection, line shopping and staking."
+          : "Pick two players to project totals, moneylines and spreads with edge detection and line shopping."}
+        kpis={proj && wp ? (
+          <StatStrip>
+            <Stat label="Proj. total" value={proj.projected} tone={C.accent} sub={`σ ±${proj.sigma.toFixed(1)}`} />
+            <Stat label={`P(${p1!.name})`} value={`${wp.adjusted.toFixed(0)}%`} tone={C.blue} />
+            <Stat label="Confidence" value={proj.confidence} tone={proj.confidence === "High" ? C.pos : proj.confidence === "Med" ? C.amber : C.neg} />
+          </StatStrip>
+        ) : undefined} />
+
       {/* setup strip */}
       <Card>
         <div className="ggba-cols" style={{ "--cols": settings.modelMode === "rated" && teamOpts.length > 0 ? "2fr 1fr 2fr 1fr" : "1fr 1fr", gap: SP.md, alignItems: "end" } as React.CSSProperties}>

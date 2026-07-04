@@ -11,7 +11,7 @@ import {
   type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
 import { STORAGE_KEYS as K, loadKey } from "@/lib/storage";
-import { Btn, Card, PlayerSelect } from "@/components/ui";
+import { Btn, Card, Hero, PlayerSelect } from "@/components/ui";
 
 interface ChatMessage { role: "user" | "assistant"; content: string }
 
@@ -77,6 +77,8 @@ export default function AIAssistant({ players, settings, lateNight, wf }: {
 
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
+      <Hero eyebrow="AI Analyst" title="Ask the model"
+        sub="A quantitative analyst that reasons over your live projection for the selected matchup — it won't invent stats." />
       <Card>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SP.md }}>
           <PlayerSelect label="Player 1" players={players} value={n1} onChange={setN1} />
@@ -100,7 +102,7 @@ export default function AIAssistant({ players, settings, lateNight, wf }: {
               <div style={{ fontSize: 10, color: C.faint, marginBottom: 3, textAlign: m.role === "user" ? "right" : "left", textTransform: "uppercase", letterSpacing: 1 }}>
                 {m.role === "user" ? "You" : "Analyst"}
               </div>
-              <div style={{ background: m.role === "user" ? C.accent : C.surface2, color: m.role === "user" ? "#04130c" : C.text,
+              <div style={{ background: m.role === "user" ? C.accent : C.surface2, color: m.role === "user" ? C.onAccent : C.text,
                 border: `1px solid ${m.role === "user" ? C.accent : C.border}`, borderRadius: RADIUS.lg, padding: "10px 13px",
                 fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{m.content}</div>
             </div>

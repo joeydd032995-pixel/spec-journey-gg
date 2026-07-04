@@ -6,22 +6,22 @@ import { Calendar, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 
 import { C, FONT, SP, RADIUS } from "@/lib/theme";
 import type { UpcomingGame } from "@/lib/upcoming";
-import { Badge, Btn, Card, CardHeader, Empty, FormDots, Label, Stat } from "@/components/ui";
+import { Badge, Btn, Card, CardHeader, Empty, FormDots, Hero, Label, Stat } from "@/components/ui";
 
 export default function UpcomingGamesFeed({ upcoming, loading, error, onRefresh }: {
   upcoming: UpcomingGame[]; loading: boolean; error: string | null; onRefresh: () => void;
 }) {
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
+      <Hero eyebrow="Upcoming" title="Tonight's slate"
+        sub="Scheduled H2H GG League matchups with player form, head-to-head history and model analysis."
+        kpis={<Btn onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={14} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
+          {loading ? "Loading…" : "Refresh"}
+        </Btn>} />
       <Card>
         <CardHeader icon={<Calendar size={15} />}
-          title={<>Upcoming matchups{upcoming.length > 0 && <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 12, color: C.muted }}>{upcoming.length} game{upcoming.length !== 1 ? "s" : ""}</span>}</>}
-          actions={
-            <Btn onClick={onRefresh} disabled={loading}>
-              <RefreshCw size={14} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
-              {loading ? "Loading…" : "Refresh"}
-            </Btn>
-          } />
+          title={<>Upcoming matchups{upcoming.length > 0 && <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 12, color: C.muted }}>{upcoming.length} game{upcoming.length !== 1 ? "s" : ""}</span>}</>} />
 
         {error && (
           <div style={{ color: C.neg, fontSize: 13, marginBottom: SP.md, padding: "8px 12px",

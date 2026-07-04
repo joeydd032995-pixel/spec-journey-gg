@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { C } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "GGBetAnalyzer — eBasketball H2H GG League",
@@ -16,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body style={{ margin: 0, padding: 0, background: "#0d0f12" }}>
+      <body style={{ margin: 0, padding: 0, background: C.bg }}>
         {children}
       </body>
     </html>

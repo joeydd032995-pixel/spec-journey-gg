@@ -4,19 +4,46 @@
    for shared concepts (cards, stats, fields, badges, buttons, tables).
    ========================================================================== */
 import React from "react";
-import { C, FONT, SP, RADIUS } from "@/lib/theme";
+import { C, FONT, SP, RADIUS, SHADOW } from "@/lib/theme";
 import type { Player } from "@/lib/model";
 
 /* ----------------------------- containers -------------------------------- */
+/* `glow` (kept for API compatibility) now means "featured": a 3px accent top
+   rule + a slightly deeper shadow — emphasis without any neon. */
 export const Card = ({ children, style, glow, flush }: {
   children?: React.ReactNode; style?: React.CSSProperties; glow?: boolean; flush?: boolean;
 }) => (
   <div style={{
-    background: C.surface, border: `1px solid ${glow ? C.accentDim : C.border}`,
+    background: C.surface, border: `1px solid ${C.border}`,
+    borderTop: glow ? `3px solid ${C.accent}` : `1px solid ${C.border}`,
     borderRadius: RADIUS.lg, padding: flush ? 0 : SP.lg, overflow: flush ? "hidden" : undefined,
-    boxShadow: glow ? `0 0 0 1px ${C.accentDim}, 0 8px 30px -18px ${C.accent}` : "0 4px 6px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.06)",
+    boxShadow: glow ? SHADOW.lg : SHADOW.md,
     ...style,
   }}>{children}</div>
+);
+
+/* ----------------------------- hero band --------------------------------- */
+/** Full-width attention band at the top of a view: oversized display title,
+    one-line subtitle, optional right-aligned KPI strip. */
+export const Hero = ({ eyebrow, title, sub, kpis }: {
+  eyebrow?: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; kpis?: React.ReactNode;
+}) => (
+  <div style={{
+    display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap",
+    gap: SP.lg, padding: `${SP.xs}px 0 ${SP.lg}px`, borderBottom: `2px solid ${C.text}`, marginBottom: SP.xs,
+  }}>
+    <div style={{ minWidth: 0 }}>
+      {eyebrow && (
+        <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: C.accent, fontWeight: 800, marginBottom: SP.sm }}>
+          {eyebrow}
+        </div>
+      )}
+      <h1 style={{ margin: 0, fontFamily: FONT.display, fontWeight: 900, letterSpacing: -0.5,
+        fontSize: "clamp(30px, 5vw, 48px)", lineHeight: 1.02, color: C.text }}>{title}</h1>
+      {sub && <div style={{ marginTop: SP.sm, fontSize: 14, color: C.muted, lineHeight: 1.5, maxWidth: 640 }}>{sub}</div>}
+    </div>
+    {kpis && <div style={{ flexShrink: 0 }}>{kpis}</div>}
+  </div>
 );
 
 /** Card title row: bold title left, actions right. */
@@ -112,7 +139,7 @@ export const Btn = ({ children, onClick, kind = "ghost", disabled, style, title 
   style?: React.CSSProperties; title?: string;
 }) => {
   const kinds: Record<BtnKind, React.CSSProperties> = {
-    primary: { background: C.accent, color: "#04130c", border: `1px solid ${C.accent}`, fontWeight: 800 },
+    primary: { background: C.accent, color: C.onAccent, border: `1px solid ${C.accent}`, fontWeight: 800 },
     ghost: { background: "transparent", color: C.text, border: `1px solid ${C.borderHi}` },
     danger: { background: "transparent", color: C.neg, border: `1px solid ${C.neg}55` },
   };
@@ -139,8 +166,8 @@ export const Stat = ({ label, value, sub, tone }: {
 }) => (
   <div style={{ minWidth: 0 }}>
     <Label>{label}</Label>
-    <div style={{ fontFamily: FONT.mono, fontSize: 22, fontWeight: 700, color: tone || C.text,
-      lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+    <div style={{ fontFamily: FONT.mono, fontSize: 24, fontWeight: 700, color: tone || C.text,
+      lineHeight: 1.05, fontVariantNumeric: "tabular-nums", letterSpacing: -0.5 }}>{value}</div>
     {sub && <div style={{ fontSize: 11, color: C.faint, marginTop: SP.xs, lineHeight: 1.4 }}>{sub}</div>}
   </div>
 );

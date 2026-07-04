@@ -6,7 +6,7 @@ import { Check, KeyRound, Satellite, Settings as SettingsIcon, Trash2 } from "lu
 
 import { C, FONT, SP } from "@/lib/theme";
 import { STORAGE_KEYS as K, loadKey, saveKey } from "@/lib/storage";
-import { Badge, Btn, Card, CardHeader, Hint, Label, Notice, inputStyle } from "@/components/ui";
+import { Badge, Btn, Card, CardHeader, Hero, Hint, Label, Notice, inputStyle } from "@/components/ui";
 
 interface StatusPayload {
   dataSource: "direct" | "scraper";
@@ -71,6 +71,8 @@ export default function Settings() {
 
   return (
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
+      <Hero eyebrow="Settings" title="Configure"
+        sub="Bring your own AI key and see how this deployment sources its data. Nothing here leaves your browser except a per-request call to this site's own server." />
       <Card>
         <CardHeader icon={<KeyRound size={15} />} title="AI Analyst key"
           sub="Powers the AI Analyst chat. Your key is stored only in this browser (localStorage) and sent to this site's own server per request — never to third parties. Get one at console.anthropic.com."
