@@ -28,7 +28,7 @@ function wfPair(row: WalkForwardRow): [Player, Player] {
 
 const CAL_GRID = [-6, -4, -2, 0, 2, 4, 6]; // O/U line offsets from the realized-median total (sharp-book proxy)
 
-interface WfbRow { actual: number; baseProj: number; rateProj: number; proj: number; sigma: number; err: number }
+interface WfbRow { priorCenter: number | null; actual: number; baseProj: number; rateProj: number; proj: number; sigma: number; err: number }
 
 export default function Insights({ bets, matches, players, settings, lateNight, wf }: {
   bets: Bet[]; matches: MatchResult[]; players: Player[]; settings: Settings; lateNight: boolean; wf: WalkForwardRow[];
@@ -75,7 +75,7 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
     const rows: WfbRow[] = [];
     const bP: number[] = [], rP: number[] = [], aAll: number[] = [];
     let lgPts = 0, lgPg = 0;
-    wf.forEach((r) => {
+    [...wf].sort((a, b) => a.date.localeCompare(b.date)).forEach((r) => {
       const lgMean = lgPg > 0 ? lgPts / lgPg : null;
       const actual = num(r.actual_total);
       const t1 = r.p1_team || "", t2 = r.p2_team || "";
@@ -89,7 +89,7 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
         if (baseProj != null && rateProj > 0) {
           const useRate = settings.modelMode === "rated";
           rows.push({
-            actual, baseProj, rateProj,
+            priorCenter: lgMean == null ? null : Math.floor(lgMean * 2) + 0.5, actual, baseProj, rateProj,
             proj: useRate ? rateProj : baseProj,
             sigma: useRate ? rateSig : base!.sigma,
             err: (useRate ? rateProj : baseProj) - actual,
@@ -118,12 +118,10 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
   // ---- CALIBRATION (out-of-sample O/U probabilities across a line grid) ----
   const cal = useMemo(() => {
     const samples: Array<{ p: number; y: 0 | 1 }> = [];
-    // Anchor lines to the realized MEDIAN total (a sharp-book stand-in), not the
-    // model's own projection — a projection-centered grid self-hedges and hides bias.
-    const acts = wfb.rows.map((r) => r.actual).slice().sort((a, b) => a - b);
-    const center = acts.length ? Math.round(acts[Math.floor(acts.length / 2)]) + 0.5 : 0;
-    const lines = CAL_GRID.map((o) => center + o);
+    // Hypothetical lines use past games only. This is exploratory, not market validation.
     wfb.rows.forEach((r) => {
+      if (r.priorCenter == null) return;
+      const lines = CAL_GRID.map((o) => r.priorCenter! + o);
       lines.forEach((line) => {
         const p = probOver(r.proj, r.sigma, line);
         if (p == null) return;
@@ -282,8 +280,8 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
 
       {/* calibration */}
       <Card>
-        <CardHeader icon={<Gauge size={15} />} title="Probability calibration · O/U"
-          sub={`Does "55% Over" land ~55%? Points on the diagonal = calibrated; ECE is the calibration gap. Lines are anchored near the realized median total (a sharp-book stand-in). Flag ROI assumes both sides priced at ${assumedOdds} — a sanity check, not a profitability promise.`}
+        <CardHeader icon={<Gauge size={15} />} title="Probability calibration · O/U · exploratory"
+          sub={`Does "55% Over" land ~55%? Points on the diagonal = calibrated; ECE is the calibration gap. Hypothetical lines use the preceding games’ mean total only. These correlated grid samples are exploratory, not validation against recorded sportsbook lines. Flag ROI assumes both sides priced at ${assumedOdds} — a sanity check, not a profitability promise.`}
           actions={<div style={{ width: 120 }}><Field label="Assumed odds" value={assumedOdds} onChange={setAssumedOdds} /></div>} />
         {cal.N ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: SP.lg, alignItems: "center" }}>

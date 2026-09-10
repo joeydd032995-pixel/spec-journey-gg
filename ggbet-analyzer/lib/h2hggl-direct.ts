@@ -117,6 +117,7 @@ function numFStr(v: unknown): string {
 }
 
 function parseEvent(ev: unknown): InternalEvent | null {
+  if (!ev || typeof ev !== "object") return null;
   const e = ev as Record<string, unknown>;
   const a = e.participantAName as string | undefined;
   const b = e.participantBName as string | undefined;
@@ -166,7 +167,7 @@ function endedGames(events: unknown[]): H2HGame[] {
 
 function buildH2HMatches(games: H2HGame[]): MatchRow[] {
   return games.map((g) => ({
-    date: g.date, player1: g.hp, player2: g.ap,
+    date: new Date(g.ts * 1000).toISOString(), player1: g.hp, player2: g.ap,
     score1: g.hs, score2: g.as_, total: g.hs + g.as_, division: g.division,
   }));
 }

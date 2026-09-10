@@ -73,7 +73,7 @@ export default function Settings() {
     <div className="rise" style={{ display: "grid", gap: SP.lg }}>
       <Card>
         <CardHeader icon={<KeyRound size={15} />} title="AI Analyst key"
-          sub="Powers the AI Analyst chat. Your key is stored only in this browser (localStorage) and sent to this site's own server per request — never to third parties. Get one at console.anthropic.com."
+          sub="Powers the AI Analyst chat. Your key is stored only in this browser (localStorage) and sent to this site's own server per request — then forwarded to Anthropic to process your requests. Get one at console.anthropic.com."
           actions={<Badge tone={aiReady ? "pos" : "amber"}>{status?.aiConfigured ? "configured on server" : savedKey ? "using your key" : "not configured"}</Badge>} />
         {status?.aiConfigured ? (
           <Hint>This deployment already has a server-side key — the AI Analyst works without any setup. A key entered below is only used if the server key is removed.</Hint>

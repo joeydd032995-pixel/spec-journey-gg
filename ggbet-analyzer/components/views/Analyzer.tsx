@@ -12,7 +12,7 @@ import { C, FONT, SP, RADIUS } from "@/lib/theme";
 import {
   americanStr, bestPrice, buildRatingsModel, computeProjection, efficiency, evPerUnit,
   fullKelly, h2hDominance, impliedProb, leagueMeanPpm, marginRatioFrom, normCdf, num,
-  payoutMult, probOver, winProb,
+  payoutMult, probOver, totalProbabilities, winProb, spreadProbabilities, matchupHistory, devigTwoWay,
   type Bet, type BookQuote, type MatchResult, type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
 import {
@@ -35,6 +35,8 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
   const [mlOdds2, setMlOdds2] = useState("");
   const [spreadLine, setSpreadLine] = useState("");
   const [spreadOdds, setSpreadOdds] = useState("-110");
+  const [otherSpreadOdds, setOtherSpreadOdds] = useState("-110");
+  const [useH2h, setUseH2h] = useState(false);
   const [books, setBooks] = useState<BookQuote[]>([
     { book: "Book A", over: "", under: "" }, { book: "Book B", over: "", under: "" }, { book: "Book C", over: "", under: "" },
   ]);
@@ -45,7 +47,7 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
 
   const wfGames = wf || [];
   const ratings = useMemo(() => buildRatingsModel(
-    wfGames.map((r) => ({ p1: r.player1, t1: r.p1_team || "", p2: r.player2, t2: r.p2_team || "", s1: r.score1, s2: r.score2 })),
+    [...wfGames].sort((a,b) => Date.parse(a.date) - Date.parse(b.date)).map((r) => ({ p1: r.player1, t1: r.p1_team || "", p2: r.player2, t2: r.p2_team || "", s1: r.score1, s2: r.score2 })),
     settings), [wfGames, settings]);
   const marginRatio = useMemo(() => marginRatioFrom(wfGames), [wfGames]);
 
@@ -66,24 +68,35 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
   const ratedLive = settings.modelMode === "rated" && p1 && p2 && ratings.seen(p1.name) && ratings.seen(p2.name);
 
   const lgMean = useMemo(() => leagueMeanPpm(players), [players]);
-  const proj = useMemo(() => computeProjection(p1, p2, settings, lateNight, { leagueMean: lgMean, ratings, team1: effT1, team2: effT2 }),
+  const baseProj = useMemo(() => computeProjection(p1, p2, settings, lateNight, { leagueMean: lgMean, ratings, team1: effT1, team2: effT2 }),
     [p1, p2, settings, lateNight, lgMean, ratings, effT1, effT2]);
 
+  const history = useMemo(() => matchupHistory(n1, n2, matches), [n1, n2, matches]);
+  const proj = useMemo(() => {
+    if (!baseProj || !useH2h || history.mean == null || history.weight === 0) return baseProj;
+    const projected = baseProj.projected * (1 - history.weight) + history.mean * history.weight;
+    const change = (projected - baseProj.projected) / 2;
+    return { ...baseProj, projected: +projected.toFixed(1), p1_proj: +(baseProj.p1_proj + change).toFixed(1), p2_proj: +(baseProj.p2_proj + change).toFixed(1), sigma: Math.sqrt(baseProj.sigma ** 2 + history.weight * (1-history.weight) * (history.mean-baseProj.projected)**2) };
+  }, [baseProj, useH2h, history]);
   const h2hPenalty = useMemo(() => (p1 && p2 ? h2hDominance(p1.name, p2.name, matches) : 0), [p1, p2, matches]);
   const wp = useMemo(() => (p1 && p2 ? winProb(p1, p2, h2hPenalty, settings) : null), [p1, p2, h2hPenalty, settings]);
 
   // totals edge
-  const pOver = proj && totalLine !== "" ? probOver(proj.projected, proj.sigma, totalLine) : null;
-  const pUnder = pOver == null ? null : 1 - pOver;
-  const overEdge = pOver == null ? null : pOver - (impliedProb(overOdds) ?? 0);
-  const underEdge = pUnder == null ? null : pUnder - (impliedProb(underOdds) ?? 0);
+  const totals = proj ? totalProbabilities(proj.projected, proj.sigma, totalLine) : null;
+  const pOver = totals?.over ?? null;
+  const pUnder = totals?.under ?? null;
+  const pPush = totals?.push ?? 0;
+  const overEdge = pOver == null ? null : pOver / (1 - pPush) - (impliedProb(overOdds) ?? 0);
+  const underEdge = pUnder == null ? null : pUnder / (1 - pPush) - (impliedProb(underOdds) ?? 0);
 
   // spread: margin ~ Normal(p1_proj - p2_proj, sigma_margin)
   const margin = proj ? proj.p1_proj - proj.p2_proj : null;
   const sigmaMargin = proj ? proj.sigma * marginRatio : null;
-  const pCover = proj && margin != null && sigmaMargin != null && spreadLine !== ""
-    ? (1 - normCdf((-num(spreadLine) - margin) / sigmaMargin)) : null;
-  const spreadEdge = pCover == null ? null : pCover - (impliedProb(spreadOdds) ?? 0);
+  const spread = margin != null && sigmaMargin != null ? spreadProbabilities(margin, sigmaMargin, spreadLine) : null;
+  const pCover = spread?.cover ?? null;
+  const spreadPush = spread?.push ?? 0;
+  const spreadEdge = pCover == null ? null : pCover / (1 - spreadPush) - (impliedProb(spreadOdds) ?? 0);
+  const mlFair = devigTwoWay(mlOdds1, mlOdds2);
 
   // distribution curve for chart
   const dist = useMemo(() => {
@@ -231,6 +244,21 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
               </div>
             </Card>
 
+            <Card>
+              <CardHeader title="Matchup total score analyzer" sub="Current player model + recent head-to-head context" />
+              <StatStrip>
+                <Stat label="Model total" value={baseProj?.projected ?? "—"} />
+                <Stat label="H2H average" value={history.mean?.toFixed(1) ?? "—"} />
+                <Stat label="Meetings · 90 days" value={history.games.length} />
+                <Stat label="H2H weight" value={`${useH2h ? (history.weight * 100).toFixed(0) : 0}%`} />
+              </StatStrip>
+              <label style={{display:"flex", gap:10, alignItems:"center", minHeight:44, marginTop:12, color:C.text}}>
+                <input type="checkbox" checked={useH2h} disabled={history.weight === 0} onChange={e => setUseH2h(e.target.checked)} /> Apply exploratory H2H adjustment
+              </label>
+              <Hint>H2H is supporting evidence, not the entire model. Requires 3 recent meetings; capped at 25%. The baseline may already include these games. Game version, duration and selected teams are not verified here. Probabilities are estimates, not calibrated confidence.</Hint>
+              {history.games.slice(0,5).map(m => <div key={`${m.date}-${m.score1}-${m.score2}`} style={{padding:"8px 0", borderBottom:`1px solid ${C.border}`, fontSize:12, color:C.muted}}>{m.date.slice(0,10)} · {m.player1} {m.score1}–{m.score2} {m.player2} · total {m.score1+m.score2}</div>)}
+            </Card>
+
             {/* line shopping */}
             <Card>
               <CardHeader icon={<Search size={15} />} title="Line shopping · totals"
@@ -238,12 +266,12 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
               {(() => {
                 const bp = bestPrice(books);
                 const modelP = pOver;
-                const evAt = (p: number, o: number | null) => (o == null ? null : p * payoutMult(o) - (1 - p));
+                const evAt = (p: number, o: number | null) => (o == null ? null : evPerUnit(p, o, pPush));
                 const bestOverEV = modelP != null && bp.bestOver ? evAt(modelP, bp.bestOver.o) : null;
-                const bestUnderEV = modelP != null && bp.bestUnder ? evAt(1 - modelP, bp.bestUnder.o) : null;
+                const bestUnderEV = modelP != null && bp.bestUnder ? evAt(pUnder!, bp.bestUnder.o) : null;
                 return (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: SP.sm, alignItems: "center" }}>
+                    <div className="ggba-odds-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: SP.sm, alignItems: "center" }}>
                       <Label>Book</Label><Label>Over</Label><Label>Under</Label><span />
                       {books.map((b, i) => (
                         <React.Fragment key={i}>
@@ -296,37 +324,39 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
               </div>
               {pOver != null && pUnder != null ? (
                 <div style={{ marginTop: SP.md, display: "grid", gap: SP.sm }}>
-                  <EdgeRow side="Over" prob={pOver} odds={overOdds} edge={overEdge} settings={settings} onLog={() => logTotal("Over")} />
-                  <EdgeRow side="Under" prob={pUnder} odds={underOdds} edge={underEdge} settings={settings} onLog={() => logTotal("Under")} />
+                  <EdgeRow push={pPush} side="Over" prob={pOver} odds={overOdds} edge={overEdge} settings={settings} onLog={() => logTotal("Over")} />
+                  <EdgeRow push={pPush} side="Under" prob={pUnder} odds={underOdds} edge={underEdge} settings={settings} onLog={() => logTotal("Under")} />
                 </div>
               ) : <Hint>Enter a book line to compute Over/Under edge.</Hint>}
             </Card>
 
             <Card>
-              <CardHeader icon={<Percent size={15} />} title="Moneyline" />
+              <CardHeader icon={<Percent size={15} />} title="Moneyline prediction analyzer" sub="Win-rate / form heuristic; H2H context. Not a calibrated probability model." />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SP.sm }}>
                 <Field label={`${p1.name} odds`} value={mlOdds1} onChange={setMlOdds1} placeholder="-120" />
                 <Field label={`${p2.name} odds`} value={mlOdds2} onChange={setMlOdds2} placeholder="+105" />
               </div>
+              <Hint>Model fair odds: {americanStr(wp.adjusted >= 50 ? -100 * wp.adjusted / (100-wp.adjusted) : 100 * (100-wp.adjusted) / wp.adjusted).split(".")[0]} / {americanStr(wp.adjusted <= 50 ? -100 * (100-wp.adjusted) / wp.adjusted : 100 * wp.adjusted / (100-wp.adjusted)).split(".")[0]}. {mlFair[0] != null ? `No-vig market: ${(mlFair[0]*100).toFixed(1)}% / ${(mlFair[1]!*100).toFixed(1)}%.` : "Enter both prices for a no-vig comparison."}</Hint>
               <div style={{ marginTop: SP.md, display: "grid", gap: SP.sm }}>
                 <EdgeRow side={p1.name} prob={wp.adjusted / 100} odds={mlOdds1} disabled={mlOdds1 === ""}
-                  edge={mlOdds1 === "" ? null : wp.adjusted / 100 - (impliedProb(mlOdds1) ?? 0)} settings={settings} compact
+                  edge={mlOdds1 === "" ? null : wp.adjusted / 100 - (impliedProb(mlOdds1) ?? 0)} settings={settings}
                   onLog={() => { onLog(mlBet(p1.name, wp.adjusted / 100, mlOdds1)); flash(); }} />
                 <EdgeRow side={p2.name} prob={1 - wp.adjusted / 100} odds={mlOdds2} disabled={mlOdds2 === ""}
-                  edge={mlOdds2 === "" ? null : (1 - wp.adjusted / 100) - (impliedProb(mlOdds2) ?? 0)} settings={settings} compact
+                  edge={mlOdds2 === "" ? null : (1 - wp.adjusted / 100) - (impliedProb(mlOdds2) ?? 0)} settings={settings}
                   onLog={() => { onLog(mlBet(p2.name, 1 - wp.adjusted / 100, mlOdds2)); flash(); }} />
               </div>
             </Card>
 
             <Card>
-              <CardHeader icon={<Gauge size={15} />} title={`Spread · ${p1.name}`} />
+              <CardHeader icon={<Gauge size={15} />} title={`Spread line analyzer · ${p1.name}`} sub="Negative spread = first player favored. Whole-number lines include pushes; half-point lines do not." />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SP.sm }}>
                 <Field label="Spread (P1)" value={spreadLine} onChange={setSpreadLine} placeholder="-3.5" />
-                <Field label="Odds" value={spreadOdds} onChange={setSpreadOdds} />
+                <Field label={`${p1.name} odds`} value={spreadOdds} onChange={setSpreadOdds} />
+                <Field label={`${p2.name} odds`} value={otherSpreadOdds} onChange={setOtherSpreadOdds} />
               </div>
               {pCover != null ? (
                 <div style={{ marginTop: SP.md }}>
-                  <EdgeRow side={`${p1.name} ${Number(spreadLine) > 0 ? "+" : ""}${spreadLine}`} prob={pCover} odds={spreadOdds} edge={spreadEdge} settings={settings}
+                  <EdgeRow side={`${p1.name} ${Number(spreadLine) > 0 ? "+" : ""}${spreadLine}`} push={spreadPush} prob={pCover} odds={spreadOdds} edge={spreadEdge} settings={settings}
                     onLog={() => {
                       onLog({
                         id: crypto.randomUUID(), timestamp: new Date().toISOString(),
@@ -335,11 +365,14 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
                         outcome: "Pending", profit: 0, notes: `edge ${((spreadEdge ?? 0) * 100).toFixed(1)}%`,
                       }); flash();
                     }} />
-                  <div style={{ marginTop: SP.sm, fontSize: 11, color: C.faint, fontFamily: FONT.mono }}>
-                    proj margin {margin.toFixed(1)} · σ {sigmaMargin.toFixed(1)}
+                  {spread && <EdgeRow side={`${p2.name} ${-Number(spreadLine) >= 0 ? "+" : ""}${-Number(spreadLine)}`} prob={spread.other} push={spread.push} odds={otherSpreadOdds}
+                    edge={spread.other / (1-spread.push) - (impliedProb(otherSpreadOdds) ?? 0)} settings={settings}
+                    onLog={() => { onLog({id:crypto.randomUUID(), timestamp:new Date().toISOString(), matchup:`${p1.name} vs ${p2.name}`, bet_type:"Spread", line:`${p2.name} ${-Number(spreadLine)}`, proj_value:-margin, model_prob:+(spread.other*100).toFixed(1), odds:num(otherSpreadOdds), stake:"", outcome:"Pending", profit:0}); flash(); }} />}
+                  <div style={{ marginTop: SP.sm, fontSize: 11, color: C.muted, fontFamily: FONT.mono }}>
+                    fair spread {(-margin).toFixed(1)} · proj margin {margin.toFixed(1)} · σ {sigmaMargin.toFixed(1)}
                   </div>
                 </div>
-              ) : <Hint>Enter a spread (negative = P1 favored).</Hint>}
+              ) : <Hint>Enter a valid whole or half-point spread (negative = P1 favored).</Hint>}
             </Card>
           </div>
         </div>
@@ -355,19 +388,19 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
 }
 
 /* ── edge / best-price rows ──────────────────────────────────────────────── */
-function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled }: {
+function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled, push = 0 }: {
   side: string; prob: number; odds: string; edge: number | null; settings: Settings;
-  onLog: () => void; compact?: boolean; disabled?: boolean;
+  onLog: () => void; compact?: boolean; disabled?: boolean; push?: number;
 }) {
-  if (disabled) return (
+  if (disabled || impliedProb(odds) == null) return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px",
       background: C.surface2, border: `1px solid ${C.border}`, borderRadius: RADIUS.md, opacity: 0.6 }}>
       <span style={{ fontWeight: 700, fontSize: 13 }}>{side}</span>
       <span style={{ fontSize: 11, color: C.faint }}>enter odds</span>
     </div>
   );
-  const ev = evPerUnit(prob, odds);
-  const kq = Math.max(0, 0.25 * fullKelly(prob, odds)); // conservative quarter-Kelly
+  const ev = evPerUnit(prob, odds, push);
+  const kq = Math.max(0, 0.25 * fullKelly(prob / (1 - push), odds)); // conservative quarter-Kelly
   const good = edge != null && edge >= settings.edgeThresh;
   const bad = edge != null && edge < 0;
   const tone = good ? C.pos : bad ? C.neg : C.amber;
@@ -377,7 +410,7 @@ function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled }:
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{side}</div>
         <div style={{ fontFamily: FONT.mono, fontSize: 11, color: C.muted, marginTop: 2 }}>
-          model {(prob * 100).toFixed(1)}% · impl {((impliedProb(odds) ?? 0) * 100).toFixed(1)}%
+          win {(prob * 100).toFixed(1)}%{push > 0.0001 ? ` · push ${(push * 100).toFixed(1)}%` : ""} · impl {((impliedProb(odds) ?? 0) * 100).toFixed(1)}%
         </div>
       </div>
       <div style={{ textAlign: "right", fontFamily: FONT.mono, flexShrink: 0 }}>

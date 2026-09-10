@@ -19,6 +19,12 @@ export async function POST(req: NextRequest) {
   let body: { days?: unknown; minGp?: unknown } = {};
   try { body = await req.json(); } catch { /* empty body is fine */ }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Expected a JSON object." }, { status: 400 });
+  }
+  if ((body.days != null && !Number.isFinite(Number(body.days))) || (body.minGp != null && !Number.isFinite(Number(body.minGp)))) {
+    return NextResponse.json({ error: "Days and minimum games must be numeric." }, { status: 400 });
+  }
   const days  = Math.min(Math.max(parseInt(String(body.days  ?? 14), 10), 1), 90);
   const minGp = Math.max(parseInt(String(body.minGp ?? 1), 10), 1);
 

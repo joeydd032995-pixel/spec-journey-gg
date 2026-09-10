@@ -152,7 +152,7 @@ export const efficiency = (p: Pick<Player, "pts_per_match" | "steals" | "fouls">
 /* ----------------------------- odds helpers ------------------------------ */
 export const impliedProb = (o: unknown): number | null => { const ov = num(o); if (!ov) return null; return ov > 0 ? 100 / (ov + 100) : -ov / (-ov + 100); };
 export const payoutMult = (o: unknown): number => { const ov = num(o); if (!ov) return 0; return ov > 0 ? ov / 100 : 100 / -ov; };
-export const evPerUnit = (p: number, o: unknown): number => p * payoutMult(o) - (1 - p);
+export const evPerUnit = (p: number, o: unknown, push = 0): number => p * payoutMult(o) - Math.max(0, 1 - p - push);
 export const fullKelly = (p: number, o: unknown): number => { const b = payoutMult(o); if (b <= 0) return 0; return (b * p - (1 - p)) / b; };
 export const decimalOdds = (o: unknown): number => payoutMult(o) + 1;
 export const americanStr = (o: unknown): string => { const ov = num(o); return ov > 0 ? `+${ov}` : `${ov}`; };
@@ -223,7 +223,7 @@ export interface ProjectionContext {
 }
 
 export function projectTotal(p1: Player | undefined, p2: Player | undefined, s: Settings, lateNight: boolean, ctx: ProjectionContext | null): Projection | null {
-  if (!p1 || !p2) return null;
+  if (!p1 || !p2 || p1.name === p2.name) return null;
   const k = num(s.shrinkK);
   const lg = ctx && ctx.leagueMean != null && Number.isFinite(Number(ctx.leagueMean)) ? Number(ctx.leagueMean) : null;
   const pm1 = shrink(num(p1.pts_per_match), num(p1.gp), k, lg);
@@ -253,10 +253,20 @@ export function projectTotal(p1: Player | undefined, p2: Player | undefined, s: 
 export function probOver(projected: number, sigma: number, line: unknown): number | null {
   if (line === "" || line == null) return null; // Number("") is 0 — an empty line is "no line", not 0
   const L = Number(line);
-  if (!Number.isFinite(L) || sigma <= 0) return null;
+  if (!Number.isFinite(L) || !Number.isFinite(projected) || !Number.isFinite(sigma) || sigma <= 0) return null;
   const isInt = Math.abs(L - Math.round(L)) < 1e-9;
   const cc = isInt ? 0.5 : 0;
   return 1 - normCdf((L + cc - projected) / sigma);
+}
+
+/** Separate win/loss/push masses for discrete scores. */
+export function totalProbabilities(projected: number, sigma: number, line: unknown) {
+  const over = probOver(projected, sigma, line);
+  if (over == null) return null;
+  const L = Number(line);
+  const integer = Math.abs(L - Math.round(L)) < 1e-9;
+  const under = normCdf((L - (integer ? 0.5 : 0) - projected) / sigma);
+  return { over, under, push: Math.max(0, 1 - over - under) };
 }
 
 /* ---- Win Probability ------------------------------------------------------
@@ -347,7 +357,7 @@ export function buildRatingsModel(games: RatingGame[], params: Partial<Settings>
 
 /** Unified projection: rating model when selected + both players known, else baseline ppm. */
 export function computeProjection(p1: Player | undefined, p2: Player | undefined, s: Settings, lateNight: boolean, ctx: ProjectionContext | null): Projection | null {
-  if (!p1 || !p2) return null;
+  if (!p1 || !p2 || p1.name === p2.name) return null;
   if (s.modelMode === "rated" && ctx?.ratings?.seen(String(p1.name)) && ctx.ratings.seen(String(p2.name))) {
     const pred = ctx.ratings.predict(String(p1.name), String(ctx.team1 || ""), String(p2.name), String(ctx.team2 || ""));
     const projected = r1(pred.total);
@@ -379,3 +389,25 @@ export const matchKey = (m: Pick<MatchResult, "date" | "player1" | "player2" | "
 
 export const wfKey = (r: Pick<WalkForwardRow, "date" | "player1" | "player2" | "score1" | "score2">): string =>
   `${r.date}|${String(r.player1).toLowerCase()}|${String(r.player2).toLowerCase()}|${r.score1}|${r.score2}`;
+
+/** Whole/half-point spreads, from the first player's perspective. */
+export function spreadProbabilities(margin: number, sigma: number, line: unknown) {
+  if (line == null || String(line).trim() === "" || !Number.isFinite(Number(line)) || !Number.isInteger(Number(line) * 2)) return null;
+  const result = totalProbabilities(margin, sigma, -Number(line));
+  return result ? { cover: result.over, other: result.under, push: result.push } : null;
+}
+
+/** Recent, unique, completed H2H games; an exploratory adjustment, not fitted calibration. */
+export function matchupHistory(a: string, b: string, matches: MatchResult[], now = Date.now()) {
+  const seen = new Set<string>();
+  const games = matches.filter(m => {
+    const date = Date.parse(m.date);
+    if (!a || a === b || !((m.player1 === a && m.player2 === b) || (m.player1 === b && m.player2 === a)) || !Number.isFinite(date) || date > now || now - date > 90 * 86400000 || !Number.isFinite(m.score1) || !Number.isFinite(m.score2) || m.score1 < 0 || m.score2 < 0 || m.score1 + m.score2 === 0) return false;
+    const key = `${m.date}|${m.player1 === a ? m.score1 : m.score2}|${m.player1 === a ? m.score2 : m.score1}`;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).sort((x,y) => Date.parse(y.date) - Date.parse(x.date));
+  const mean = games.length ? games.reduce((s,m) => s + m.score1 + m.score2, 0) / games.length : null;
+  const weight = games.length < 3 ? 0 : Math.min(0.25, games.length / (games.length + 20));
+  return { games, mean, weight };
+}

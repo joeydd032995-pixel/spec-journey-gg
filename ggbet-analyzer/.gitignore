@@ -25,3 +25,14 @@ ggba_data/
 # build artifacts
 *.tsbuildinfo
 next-env.d.ts
+
+/dist/
+/sites/generated-client.txt
+
+/node_modules
+/.next/
+*.tsbuildinfo
+.env.local
+
+research-output/
+.vercel/

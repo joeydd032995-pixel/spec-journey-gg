@@ -1,6 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#090b18" };
 
 export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "GG Analyzer" },
   title: "GGBetAnalyzer — eBasketball H2H GG League",
   description: "NBA 2K H2H GG League betting analytics: walk-forward backtesting, line shopping, CLV tracking.",
 };
@@ -16,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body style={{ margin: 0, padding: 0, background: "#0d0f12" }}>
+      <body style={{ margin: 0, padding: 0, background: "#090b18" }}>
         {children}
       </body>
     </html>

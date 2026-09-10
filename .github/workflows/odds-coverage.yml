@@ -1,0 +1,25 @@
+name: Verify candidate CLV provider coverage
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check H2H GG events and prematch history
+        working-directory: ggbet-analyzer
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+          BETSAPI_TEST_EVENT_IDS: ${{ vars.BETSAPI_TEST_EVENT_IDS }}
+        run: node scripts/verify-odds.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clv-provider-coverage
+          path: ggbet-analyzer/research-output/odds-coverage.json
+          retention-days: 30

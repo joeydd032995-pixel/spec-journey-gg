@@ -12,6 +12,7 @@ export const Card = ({ children, style, glow, flush }: {
   children?: React.ReactNode; style?: React.CSSProperties; glow?: boolean; flush?: boolean;
 }) => (
   <div style={{
+    minWidth: 0, overflowWrap: "anywhere",
     background: C.surface, border: `1px solid ${glow ? C.accentDim : C.border}`,
     borderRadius: RADIUS.lg, padding: flush ? 0 : SP.lg, overflow: flush ? "hidden" : undefined,
     boxShadow: glow ? `0 0 0 1px ${C.accentDim}, 0 8px 30px -18px ${C.accent}` : "0 4px 6px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.06)",
@@ -54,7 +55,7 @@ export const Badge = ({ tone = "muted", children }: { tone?: BadgeTone; children
   const [fg, bg] = map[tone] || map.muted;
   return (
     <span style={{ color: fg, background: bg, border: `1px solid ${fg}33`, padding: "2px 8px",
-      borderRadius: 999, fontSize: 11, fontWeight: 700, fontFamily: FONT.mono, whiteSpace: "nowrap" }}>{children}</span>
+      borderRadius: 999, fontSize: 11, fontWeight: 700, fontFamily: FONT.mono, whiteSpace: "normal", overflowWrap: "anywhere" }}>{children}</span>
   );
 };
 
@@ -80,7 +81,7 @@ export const Field = ({ label, value, onChange, type = "text", placeholder, step
 }) => (
   <div style={{ width }}>
     {label && <Label>{label}</Label>}
-    <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} type={type} step={step} placeholder={placeholder}
+    <input aria-label={label} value={value ?? ""} onChange={(e) => onChange(e.target.value)} type={type} step={step} placeholder={placeholder}
       style={{ ...inputStyle, fontFamily: mono ? FONT.mono : FONT.ui }}
       onFocus={(e) => (e.target.style.borderColor = C.accentDim)}
       onBlur={(e) => (e.target.style.borderColor = C.border)} />
@@ -93,7 +94,7 @@ export function PlayerSelect({ players, value, onChange, label }: {
   return (
     <div style={{ minWidth: 0 }}>
       {label && <Label>{label}</Label>}
-      <select value={value} onChange={(e) => onChange(e.target.value)}
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}
         style={{ ...selStyle, color: value ? C.text : C.faint, fontFamily: FONT.ui,
           backgroundImage: `linear-gradient(45deg, transparent 50%, ${C.muted} 50%), linear-gradient(135deg, ${C.muted} 50%, transparent 50%)`,
           backgroundPosition: "right 14px center, right 9px center", backgroundSize: "5px 5px, 5px 5px", backgroundRepeat: "no-repeat" }}>
@@ -112,7 +113,7 @@ export const Btn = ({ children, onClick, kind = "ghost", disabled, style, title 
   style?: React.CSSProperties; title?: string;
 }) => {
   const kinds: Record<BtnKind, React.CSSProperties> = {
-    primary: { background: C.accent, color: "#04130c", border: `1px solid ${C.accent}`, fontWeight: 800 },
+    primary: { background: C.accent, color: "#100c22", border: `1px solid ${C.accent}`, fontWeight: 800 },
     ghost: { background: "transparent", color: C.text, border: `1px solid ${C.borderHi}` },
     danger: { background: "transparent", color: C.neg, border: `1px solid ${C.neg}55` },
   };

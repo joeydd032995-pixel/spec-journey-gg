@@ -86,7 +86,7 @@ function FetchCard({ setPlayers, setMatches, setWf }: { setPlayers: SetPlayers; 
         return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
       });
       setMatches((prev) => {
-        const key = (m: MatchResult) => `${m.date}|${m.player1}|${m.player2}`;
+        const key = matchKey;
         const seen = new Set(prev.map(key));
         const next = [...prev];
         (newMatches as MatchResult[]).forEach((m) => { if (!seen.has(key(m))) { seen.add(key(m)); next.push(m); } });

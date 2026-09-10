@@ -1,31 +1,31 @@
 /* ============================================================================
    Design tokens — single source of truth for color, type and spacing.
-   Dark "trading terminal" theme: cool green-tinted neutrals, one accent.
+   Dark "trading terminal" theme: midnight navy surfaces, violet and blue accents.
    ========================================================================== */
 
 export const C = {
-  // surfaces (green-tinted cool darks, stepped by lightness)
-  bg: "#0a0e0d",
-  surface: "#101614",
-  surface2: "#161e1b",
-  surface3: "#1c2622",
-  border: "#212c28",
-  borderHi: "#2e3c37",
+  // surfaces (navy darks, stepped by lightness)
+  bg: "#090b18",
+  surface: "#11152a",
+  surface2: "#191e38",
+  surface3: "#222947",
+  border: "#303858",
+  borderHi: "#444f78",
   // text
-  text: "#e9f1ec",
-  muted: "#8a9c93",
-  faint: "#5b6b63",
+  text: "#e5e7ff",
+  muted: "#a2acd2",
+  faint: "#7e8bb5",
   // accent + semantic
-  accent: "#3df5a0",
-  accentDim: "#1c6b48",
-  accentBg: "#0c2a1d",
-  pos: "#3df5a0",
-  neg: "#ff5d52",
-  negBg: "#2e1210",
+  accent: "#aa91ff",
+  accentDim: "#645099",
+  accentBg: "#282044",
+  pos: "#aa91ff",
+  neg: "#ff7b95",
+  negBg: "#331b30",
   amber: "#ffc24b",
   amberBg: "#2c2310",
-  blue: "#5fb0ff",
-  blueBg: "#0f2334",
+  blue: "#78baff",
+  blueBg: "#182c49",
 } as const;
 
 export const FONT = {
