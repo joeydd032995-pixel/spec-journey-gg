@@ -29,3 +29,12 @@ describe("storage", () => {
     expect(STORAGE_KEYS.walkforward).toBe("ggba:walkforward");
   });
 });
+
+it('rejects valid JSON with an incompatible persisted shape', () => {
+  localStorage.setItem('bad:array', 'null');
+  expect(loadKey('bad:array', [])).toEqual([]);
+  localStorage.setItem('bad:settings', '[]');
+  expect(loadKey('bad:settings', {})).toEqual({});
+  localStorage.setItem('bad:key', '{}');
+  expect(loadKey('bad:key', '')).toBe('');
+});

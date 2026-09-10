@@ -55,8 +55,8 @@ export default function GGBetAnalyzer() {
     setWf(loadKey(K.walkforward, [] as WalkForwardRow[]));
     setBets(loadKey(K.bets, [] as Bet[]));
     setSettings({ ...DEFAULT_SETTINGS, ...loadKey(K.settings, {} as Partial<Settings>) });
-    const h = new Date().getHours();
-    setLateNight(h >= 23 || h < 5);
+    // Fatigue is an explicit scenario; the viewer timezone says nothing about players.
+    setLateNight(false);
     setClock(new Date());
     setLoaded(true);
   }, []);
@@ -77,8 +77,8 @@ export default function GGBetAnalyzer() {
     setUpcomingError(null);
     try {
       const res = await fetch("/api/upcoming-feed?days=2&history=30");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (gen === upcomingGenRef.current) setUpcoming(data.upcoming || []);
     } catch (e: unknown) {
       if (gen === upcomingGenRef.current) setUpcomingError(e instanceof Error ? e.message : String(e));
@@ -132,6 +132,19 @@ export default function GGBetAnalyzer() {
           .ggba-main { margin-left: 60px; padding: ${SP.lg}px; }
           .ggba-nav-label, .ggba-side-meta { display: none; }
         }
+        @media (max-width: 600px) {
+          .ggba-sidebar { inset: auto 0 0; width: 100%; border-right: 0; border-top: 1px solid ${C.border}; padding-bottom: env(safe-area-inset-bottom); }
+          .ggba-sidebar > div { display: none !important; }
+          .ggba-sidebar nav { flex-direction: row !important; padding: 5px 2px !important; gap: 0 !important; }
+          .ggba-sidebar nav button { flex: 1; min-width: 0; padding: 7px 1px !important; flex-direction: column; gap: 5px !important; font-size: 10px !important; min-height: 52px !important; text-align: center !important; }
+          .ggba-sidebar nav .ggba-nav-label { display: inline; }
+          .ggba-main { margin-left: 0; padding: 16px 12px calc(90px + env(safe-area-inset-bottom)); }
+          .ggba-main input, .ggba-main select, .ggba-main textarea { font-size: 16px !important; min-height: 44px; min-width: 0; max-width: 100%; }
+          .ggba-main button { min-height: 44px !important; touch-action: manipulation; }
+          .ggba-statstrip { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; row-gap: 16px !important; }
+          .ggba-statstrip > div { padding: 4px 8px !important; }
+          .ggba-odds-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 30px !important; }
+        }
       `}</style>
 
       {/* sidebar */}
@@ -153,7 +166,7 @@ export default function GGBetAnalyzer() {
           {NAV.map((t) => {
             const on = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} title={t.label}
+              <button key={t.id} onClick={() => setTab(t.id)} title={t.label} aria-label={t.label} aria-current={on ? "page" : undefined}
                 style={{ display: "flex", alignItems: "center", gap: SP.md, padding: "10px 12px", minHeight: 40,
                   borderRadius: RADIUS.md, border: "none", width: "100%", textAlign: "left",
                   background: on ? C.surface3 : "transparent", color: on ? C.text : C.muted,
@@ -185,6 +198,15 @@ export default function GGBetAnalyzer() {
 
       {/* main workspace */}
       <main className="ggba-main">
+        <header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20 }}>
+          <div><div style={{ color: C.accent, fontSize: 11, letterSpacing: 2, fontWeight: 800 }}>H2H GG · eBASKETBALL</div>
+          <h1 style={{ fontSize: 23, margin: "6px 0" }}>Matchup workspace</h1></div>
+          <button onClick={() => setLateNight(v => !v)} aria-pressed={lateNight} style={{ color: C.muted, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 10 }}>Fatigue scenario: {lateNight ? "on" : "off"}</button>
+        </header>
+        {loaded && players.length < 2 && tab === "analyze" && <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <strong>Start with real match data</strong><p style={{ color: C.muted, fontSize: 13 }}>Open Data and fetch the public league feed, or import your CSV files. Your data and ledger are saved in this browser.</p>
+          <button onClick={() => setTab("data")} style={{ background: C.accent, color: "#04130c", border: 0, borderRadius: 8, padding: "12px 18px", fontWeight: 800 }}>Load league data</button>
+        </div>}
         {!loaded ? (
           <div style={{ color: C.muted, padding: SP.xxl, textAlign: "center" }}>Loading terminal…</div>
         ) : tab === "data" ? (

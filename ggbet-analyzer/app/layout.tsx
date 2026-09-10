@@ -1,6 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#0d0f12" };
 
 export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "GG Analyzer" },
   title: "GGBetAnalyzer — eBasketball H2H GG League",
   description: "NBA 2K H2H GG League betting analytics: walk-forward backtesting, line shopping, CLV tracking.",
 };

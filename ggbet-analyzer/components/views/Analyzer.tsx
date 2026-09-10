@@ -12,7 +12,7 @@ import { C, FONT, SP, RADIUS } from "@/lib/theme";
 import {
   americanStr, bestPrice, buildRatingsModel, computeProjection, efficiency, evPerUnit,
   fullKelly, h2hDominance, impliedProb, leagueMeanPpm, marginRatioFrom, normCdf, num,
-  payoutMult, probOver, winProb,
+  payoutMult, probOver, totalProbabilities, winProb,
   type Bet, type BookQuote, type MatchResult, type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
 import {
@@ -73,10 +73,12 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
   const wp = useMemo(() => (p1 && p2 ? winProb(p1, p2, h2hPenalty, settings) : null), [p1, p2, h2hPenalty, settings]);
 
   // totals edge
-  const pOver = proj && totalLine !== "" ? probOver(proj.projected, proj.sigma, totalLine) : null;
-  const pUnder = pOver == null ? null : 1 - pOver;
-  const overEdge = pOver == null ? null : pOver - (impliedProb(overOdds) ?? 0);
-  const underEdge = pUnder == null ? null : pUnder - (impliedProb(underOdds) ?? 0);
+  const totals = proj ? totalProbabilities(proj.projected, proj.sigma, totalLine) : null;
+  const pOver = totals?.over ?? null;
+  const pUnder = totals?.under ?? null;
+  const pPush = totals?.push ?? 0;
+  const overEdge = pOver == null ? null : pOver / (1 - pPush) - (impliedProb(overOdds) ?? 0);
+  const underEdge = pUnder == null ? null : pUnder / (1 - pPush) - (impliedProb(underOdds) ?? 0);
 
   // spread: margin ~ Normal(p1_proj - p2_proj, sigma_margin)
   const margin = proj ? proj.p1_proj - proj.p2_proj : null;
@@ -238,12 +240,12 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
               {(() => {
                 const bp = bestPrice(books);
                 const modelP = pOver;
-                const evAt = (p: number, o: number | null) => (o == null ? null : p * payoutMult(o) - (1 - p));
+                const evAt = (p: number, o: number | null) => (o == null ? null : evPerUnit(p, o, pPush));
                 const bestOverEV = modelP != null && bp.bestOver ? evAt(modelP, bp.bestOver.o) : null;
-                const bestUnderEV = modelP != null && bp.bestUnder ? evAt(1 - modelP, bp.bestUnder.o) : null;
+                const bestUnderEV = modelP != null && bp.bestUnder ? evAt(pUnder!, bp.bestUnder.o) : null;
                 return (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: SP.sm, alignItems: "center" }}>
+                    <div className="ggba-odds-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: SP.sm, alignItems: "center" }}>
                       <Label>Book</Label><Label>Over</Label><Label>Under</Label><span />
                       {books.map((b, i) => (
                         <React.Fragment key={i}>
@@ -296,8 +298,8 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
               </div>
               {pOver != null && pUnder != null ? (
                 <div style={{ marginTop: SP.md, display: "grid", gap: SP.sm }}>
-                  <EdgeRow side="Over" prob={pOver} odds={overOdds} edge={overEdge} settings={settings} onLog={() => logTotal("Over")} />
-                  <EdgeRow side="Under" prob={pUnder} odds={underOdds} edge={underEdge} settings={settings} onLog={() => logTotal("Under")} />
+                  <EdgeRow push={pPush} side="Over" prob={pOver} odds={overOdds} edge={overEdge} settings={settings} onLog={() => logTotal("Over")} />
+                  <EdgeRow push={pPush} side="Under" prob={pUnder} odds={underOdds} edge={underEdge} settings={settings} onLog={() => logTotal("Under")} />
                 </div>
               ) : <Hint>Enter a book line to compute Over/Under edge.</Hint>}
             </Card>
@@ -355,19 +357,19 @@ export default function Analyzer({ players, settings, lateNight, matches, wf, on
 }
 
 /* ── edge / best-price rows ──────────────────────────────────────────────── */
-function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled }: {
+function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled, push = 0 }: {
   side: string; prob: number; odds: string; edge: number | null; settings: Settings;
-  onLog: () => void; compact?: boolean; disabled?: boolean;
+  onLog: () => void; compact?: boolean; disabled?: boolean; push?: number;
 }) {
-  if (disabled) return (
+  if (disabled || impliedProb(odds) == null) return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px",
       background: C.surface2, border: `1px solid ${C.border}`, borderRadius: RADIUS.md, opacity: 0.6 }}>
       <span style={{ fontWeight: 700, fontSize: 13 }}>{side}</span>
       <span style={{ fontSize: 11, color: C.faint }}>enter odds</span>
     </div>
   );
-  const ev = evPerUnit(prob, odds);
-  const kq = Math.max(0, 0.25 * fullKelly(prob, odds)); // conservative quarter-Kelly
+  const ev = evPerUnit(prob, odds, push);
+  const kq = Math.max(0, 0.25 * fullKelly(prob / (1 - push), odds)); // conservative quarter-Kelly
   const good = edge != null && edge >= settings.edgeThresh;
   const bad = edge != null && edge < 0;
   const tone = good ? C.pos : bad ? C.neg : C.amber;
@@ -377,7 +379,7 @@ function EdgeRow({ side, prob, odds, edge, settings, onLog, compact, disabled }:
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{side}</div>
         <div style={{ fontFamily: FONT.mono, fontSize: 11, color: C.muted, marginTop: 2 }}>
-          model {(prob * 100).toFixed(1)}% · impl {((impliedProb(odds) ?? 0) * 100).toFixed(1)}%
+          win {(prob * 100).toFixed(1)}%{push > 0.0001 ? ` · push ${(push * 100).toFixed(1)}%` : ""} · impl {((impliedProb(odds) ?? 0) * 100).toFixed(1)}%
         </div>
       </div>
       <div style={{ textAlign: "right", fontFamily: FONT.mono, flexShrink: 0 }}>

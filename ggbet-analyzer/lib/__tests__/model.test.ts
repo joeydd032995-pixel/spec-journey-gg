@@ -195,9 +195,9 @@ describe("projectTotal", () => {
   });
 
   it("confidence follows min gp", () => {
-    expect(projectTotal(mkPlayer({ gp: 60 }), mkPlayer({ gp: 60 }), S, false, null)!.confidence).toBe("High");
-    expect(projectTotal(mkPlayer({ gp: 30 }), mkPlayer({ gp: 60 }), S, false, null)!.confidence).toBe("Med");
-    expect(projectTotal(mkPlayer({ gp: 5 }), mkPlayer({ gp: 60 }), S, false, null)!.confidence).toBe("Low");
+    expect(projectTotal(mkPlayer({ gp: 60 }), mkPlayer({ name: "B", gp: 60 }), S, false, null)!.confidence).toBe("High");
+    expect(projectTotal(mkPlayer({ gp: 30 }), mkPlayer({ name: "B", gp: 60 }), S, false, null)!.confidence).toBe("Med");
+    expect(projectTotal(mkPlayer({ gp: 5 }), mkPlayer({ name: "B", gp: 60 }), S, false, null)!.confidence).toBe("Low");
   });
 
   it("shrinkage pulls a low-sample outlier toward the league mean", () => {
