@@ -25,3 +25,6 @@ ggba_data/
 # build artifacts
 *.tsbuildinfo
 next-env.d.ts
+
+/dist/
+/sites/generated-client.txt

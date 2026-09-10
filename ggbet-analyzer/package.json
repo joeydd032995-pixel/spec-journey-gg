@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:sites": "node sites/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",
@@ -27,6 +28,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
     "jsdom": "^29.1.1",
     "typescript": "^5",
     "vitest": "^4.1.9"

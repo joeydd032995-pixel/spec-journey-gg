@@ -23,3 +23,7 @@ This is an engineering repair, not evidence of a profitable or calibrated bettin
 Data and ledger entries are local to each browser/device; export important records from Data/Bet Ledger. AI use requires a user-provided API key. Do not configure a shared paid API key on a public deployment without authentication and durable rate limiting.
 
 Deploy the `ggbet-analyzer` directory as the Vercel project root. No Python backend is required for direct-feed mode. `ANTHROPIC_MODEL` can optionally pin a model available to the account.
+
+## Alternate hosted build
+
+`npm run build:sites` bundles the same React components and API handlers into a Fetch-standard Worker. The small `sites/next-server.ts` adapter implements only the NextRequest.nextUrl / NextResponse.json APIs used by these routes. No model or UI fork is introduced. The hosted build uses the public direct feed and caller-provided AI keys; it intentionally contains no server credentials or paid BetsAPI token. Next.js-specific request caching is unavailable in this alternate runtime. The normal Next.js/Vercel build remains supported.
