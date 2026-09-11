@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:sites": "node sites/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",
