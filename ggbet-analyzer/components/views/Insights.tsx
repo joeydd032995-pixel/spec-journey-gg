@@ -15,7 +15,7 @@ import {
   probOver, projectTotal, r1,
   type Bet, type MatchResult, type Player, type Settings, type WalkForwardRow,
 } from "@/lib/model";
-import { Card, CardHeader, Empty, Field, Stat, StatStrip, tipStyle } from "@/components/ui";
+import { Card, CardHeader, Empty, Stat, StatStrip, tipStyle } from "@/components/ui";
 
 /* build a pre-match player object from a walk-forward snapshot (steals/fouls/fg absent in feed -> 0) */
 function wfPair(row: WalkForwardRow): [Player, Player] {
@@ -34,7 +34,8 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
   bets: Bet[]; matches: MatchResult[]; players: Player[]; settings: Settings; lateNight: boolean; wf: WalkForwardRow[];
 }) {
   const [minGp, setMinGp] = useState(10);
-  const [assumedOdds, setAssumedOdds] = useState("-110");
+  const ASSUMED_OU_ODDS = "-120"; // fixed sportsbook price for both Over and Under
+  const assumedOdds = ASSUMED_OU_ODDS;
 
   // ---- real betting performance (from ledger) ----
   const settled = bets.filter((b) => b.outcome !== "Pending" && b.outcome !== "Push");
@@ -281,8 +282,8 @@ export default function Insights({ bets, matches, players, settings, lateNight, 
       {/* calibration */}
       <Card>
         <CardHeader icon={<Gauge size={15} />} title="Probability calibration · O/U · exploratory"
-          sub={`Does "55% Over" land ~55%? Points on the diagonal = calibrated; ECE is the calibration gap. Hypothetical lines use the preceding games’ mean total only. These correlated grid samples are exploratory, not validation against recorded sportsbook lines. Flag ROI assumes both sides priced at ${assumedOdds} — a sanity check, not a profitability promise.`}
-          actions={<div style={{ width: 120 }}><Field label="Assumed odds" value={assumedOdds} onChange={setAssumedOdds} /></div>} />
+          sub={`Does "55% Over" land ~55%? Points on the diagonal = calibrated; ECE is the calibration gap. Hypothetical lines use the preceding games’ mean total only. These correlated grid samples are exploratory, not validation against recorded sportsbook lines. Flag ROI assumes both sides are fixed at ${assumedOdds} — a sanity check, not a profitability promise.`}
+          actions={<span style={{ color: C.accent, fontFamily: FONT.mono, fontSize: 12, fontWeight: 800 }}>O/U PRICE: {assumedOdds} BOTH SIDES</span>} />
         {cal.N ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: SP.lg, alignItems: "center" }}>
             <div style={{ height: 240 }}>
