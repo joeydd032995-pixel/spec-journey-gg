@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T23:13:35.353Z",
+  "generatedAt": "2026-09-20T01:17:17.215Z",
   "modelSettings": {
     "formCoef": 0.1,
     "matchupCoef": 0.05,
@@ -14,10 +14,10 @@
     "ratingDecay": 0
   },
   "source": "h2hggl public results",
-  "games": 18307,
-  "qualifyingGames": 17207,
-  "mae": 9.616543712648497,
-  "rmse": 12.23008589382223,
+  "games": 18330,
+  "qualifyingGames": 17230,
+  "mae": 9.618776468186029,
+  "rmse": 12.236573543923864,
   "calibration": "Exploratory; no verified sportsbook history connected",
   "clv": "Not connected",
   "evaluation": "Retrospective chronological replay, not an immutable prospective prediction archive"
