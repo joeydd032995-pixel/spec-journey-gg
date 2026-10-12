@@ -19,7 +19,7 @@ def _int(name: str, default: int) -> int:
 
 # h2hggl.com is a Vite SPA backed by an open JSON API. The frontend's url-sport
 # ("ebasketball") maps to the API's sport key ("nba").
-API_BASE = os.environ.get("H2HGGL_API_BASE", "https://api-h2h.hudstats.com/v1").rstrip("/")
+API_BASE = os.environ.get("H2HGGL_API_BASE", "https://api-h2h.cdn-hudstats.com/v1").rstrip("/")
 SITE_BASE = os.environ.get("H2HGGL_SITE_BASE", "https://h2hggl.com").rstrip("/")
 
 # url-sport -> api sport key. Mirrors urlSportToSportMap in the site bundle.

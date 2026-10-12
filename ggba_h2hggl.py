@@ -37,7 +37,7 @@ except ImportError:
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-API_BASE = "https://api-h2h.hudstats.com/v1"
+API_BASE = "https://api-h2h.cdn-hudstats.com/v1"
 SPORT = "nba"
 SITE_BASE = "https://h2hggl.com"
 USER_AGENT = (
