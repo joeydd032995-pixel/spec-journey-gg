@@ -14,7 +14,7 @@ Next.js app  (ggbet-analyzer/)   ← http://localhost:3000
         ↕  H2HGGL_API_URL
 Python scraper  (scraper/)       ← http://localhost:8000
         ↕  plain HTTP
-api-h2h.hudstats.com  (free, no auth, h2hggl.com's internal API)
+api-h2h.cdn-hudstats.com  (free, no auth, h2hggl.com's internal API)
 ```
 
 The scraper fetches live data from h2hggl.com's open internal JSON API, stores it
@@ -138,7 +138,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 ```bash
 curl http://localhost:8000/health
-# → {"status":"ok","sport":"nba","source":"https://api-h2h.hudstats.com/v1"}
+# → {"status":"ok","sport":"nba","source":"https://api-h2h.cdn-hudstats.com/v1"}
 
 curl "http://localhost:8000/api/feed?days=7&minGp=5"
 # → {"walkforward":[...],"players":[...],"matches":[...],"meta":{...}}
@@ -338,7 +338,7 @@ Then open http://localhost:3000.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `H2HGGL_API_BASE` | `https://api-h2h.hudstats.com/v1` | h2hggl JSON API root |
+| `H2HGGL_API_BASE` | `https://api-h2h.cdn-hudstats.com/v1` | h2hggl JSON API root |
 | `H2HGGL_URL_SPORT` | `ebasketball` | Sport key (`ebasketball` / `esoccer` / `eamericanfootball`) |
 | `H2HGGL_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `H2HGGL_CACHE_TTL` | `300` | In-memory cache TTL in seconds |

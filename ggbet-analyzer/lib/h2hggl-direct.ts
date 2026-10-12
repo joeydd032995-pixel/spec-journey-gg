@@ -8,7 +8,7 @@ import { buildWalkforward } from "./betsapi";
 import type { RawGame, PlayerRow, MatchRow } from "./betsapi";
 import type { FeedResponse } from "./h2hggl";
 
-const API_BASE = "https://api-h2h.hudstats.com/v1";
+const API_BASE = "https://api-h2h.cdn-hudstats.com/v1";
 const SITE_BASE = "https://h2hggl.com";
 const API_SPORT = "nba";
 

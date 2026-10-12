@@ -20,7 +20,7 @@ approach). The live path is therefore plain HTTP, no headless browser:
 
 | What | Endpoint |
 |------|----------|
-| Players + full stats | `GET https://api-h2h.hudstats.com/v1/participant/nba` |
+| Players + full stats | `GET https://api-h2h.cdn-hudstats.com/v1/participant/nba` |
 | A day's fixtures (incl. ended w/ scores) | `GET …/v1/schedule/nba?date=<ISO midnight>` |
 
 `app/scraper.py` also ships an optional **Playwright** fallback
@@ -60,7 +60,7 @@ Verify:
 
 ```bash
 curl http://localhost:8000/health
-# → {"status":"ok","sport":"nba","source":"https://api-h2h.hudstats.com/v1"}
+# → {"status":"ok","sport":"nba","source":"https://api-h2h.cdn-hudstats.com/v1"}
 
 curl "http://localhost:8000/api/feed?days=7&minGp=5"
 # → {"walkforward":[...],"players":[...],"matches":[...],"meta":{...}}
@@ -111,7 +111,7 @@ Add environment variable: `H2HGGL_CORS_ORIGINS=https://your-app.vercel.app`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `H2HGGL_API_BASE` | `https://api-h2h.hudstats.com/v1` | h2hggl JSON API root |
+| `H2HGGL_API_BASE` | `https://api-h2h.cdn-hudstats.com/v1` | h2hggl JSON API root |
 | `H2HGGL_URL_SPORT` | `ebasketball` | `ebasketball` / `esoccer` / `eamericanfootball` |
 | `H2HGGL_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
 | `H2HGGL_CACHE_TTL` | `300` | In-memory cache TTL (seconds) |
