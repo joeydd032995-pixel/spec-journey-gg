@@ -23,24 +23,51 @@ const HEADERS = {
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
+/** Node's fetch throws a bare "fetch failed"; the real reason (DNS, TLS,
+    refused, reset, timeout) lives on err.cause. Surface it. */
+function describeNetworkError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  if (err.name === "AbortError") return "request timed out after 10s";
+  const cause = (err as Error & { cause?: { code?: string; message?: string } }).cause;
+  const detail = cause?.code || cause?.message;
+  return detail ? `${err.message} (${detail})` : err.message;
+}
+
+const MAX_ATTEMPTS = 3;
+/** Total retry budget per request; keeps us under the routes' 30s maxDuration. */
+const TOTAL_BUDGET_MS = 24_000;
+
 async function apiGet(path: string, revalidate = 120): Promise<unknown> {
   const url = `${API_BASE}/${path.replace(/^\/+/, "")}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: HEADERS,
-      next: { revalidate },
-    } as RequestInit);
-    if (!res.ok) {
+  let lastErr = "";
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(10_000, remaining));
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: HEADERS,
+        next: { revalidate },
+      } as RequestInit);
+      if (res.ok) return await res.json();
       const text = await res.text().catch(() => "");
-      throw new Error(`hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`);
+      lastErr = `hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`;
+      // Retry only transient statuses; 4xx (other than 429) won't change on retry.
+      if (res.status !== 429 && res.status < 500) throw new Error(lastErr);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("hudstats API")) throw err;
+      lastErr = `hudstats request failed on ${path}: ${describeNetworkError(err)}`;
+    } finally {
+      clearTimeout(timer);
     }
-    return res.json();
-  } finally {
-    clearTimeout(timer);
+    if (attempt < MAX_ATTEMPTS && deadline - Date.now() > 400 * attempt) {
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
   }
+  throw new Error(lastErr);
 }
 
 async function fetchParticipants(): Promise<unknown[]> {
