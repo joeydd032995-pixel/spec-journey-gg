@@ -11,7 +11,8 @@ import type { FeedResponse } from "./h2hggl";
 const DEFAULT_API_BASE = "https://api-h2h.cdn-hudstats.com/v1";
 /** Set H2HGGL_API_BASE to route through the Cloudflare Worker proxy (see /worker),
     e.g. https://h2hggl-proxy.<account>.workers.dev/v1 */
-const API_BASE = (process.env.H2HGGL_API_BASE?.trim() || DEFAULT_API_BASE).replace(/\/+$/, "");
+const PROXY_BASE = process.env.H2HGGL_API_BASE?.trim();
+const API_BASE = (PROXY_BASE || DEFAULT_API_BASE).replace(/\/+$/, "");
 const SITE_BASE = "https://h2hggl.com";
 const API_SPORT = "nba";
 
@@ -22,7 +23,8 @@ const HEADERS: Record<string, string> = {
   Accept: "application/json",
   Origin: SITE_BASE,
   Referer: SITE_BASE + "/",
-  ...(process.env.H2HGGL_PROXY_KEY ? { "X-Proxy-Key": process.env.H2HGGL_PROXY_KEY } : {}),
+  // Only ever send the shared secret to an explicitly configured proxy, never the public API.
+  ...(PROXY_BASE && process.env.H2HGGL_PROXY_KEY ? { "X-Proxy-Key": process.env.H2HGGL_PROXY_KEY } : {}),
 };
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
