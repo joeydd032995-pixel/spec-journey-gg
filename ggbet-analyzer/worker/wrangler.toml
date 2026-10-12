@@ -1,0 +1,4 @@
+name = "h2hggl-proxy"
+main = "src/index.mjs"
+compatibility_date = "2024-11-01"
+workers_dev = true
