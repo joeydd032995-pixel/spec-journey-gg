@@ -58,9 +58,15 @@ async function apiGet(path: string, revalidate = 120): Promise<unknown> {
       } as RequestInit);
       if (res.ok) return await res.json();
       const text = await res.text().catch(() => "");
-      lastErr = `hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`;
-      // Retry only transient statuses; 4xx (other than 429) won't change on retry.
-      if (res.status !== 429 && res.status < 500) throw new Error(lastErr);
+      // Cloudflare scores datacenter IPs as bots and intermittently serves an HTML
+      // challenge instead of JSON; a retry often gets through.
+      const challenged =
+        res.headers.get("cf-mitigated") === "challenge" || /Just a moment/i.test(text.slice(0, 600));
+      lastErr = challenged
+        ? `hudstats API blocked ${path} with a Cloudflare bot challenge (HTTP ${res.status})`
+        : `hudstats API ${res.status} on ${path}: ${text.slice(0, 200)}`;
+      // Retry transient statuses and challenges; other 4xx won't change on retry.
+      if (!challenged && res.status !== 429 && res.status < 500) throw new Error(lastErr);
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("hudstats API")) throw err;
       lastErr = `hudstats request failed on ${path}: ${describeNetworkError(err)}`;
@@ -68,7 +74,7 @@ async function apiGet(path: string, revalidate = 120): Promise<unknown> {
       clearTimeout(timer);
     }
     if (attempt < MAX_ATTEMPTS && deadline - Date.now() > 400 * attempt) {
-      await new Promise((r) => setTimeout(r, 400 * attempt));
+      await new Promise((r) => setTimeout(r, 400 * attempt + Math.random() * 400));
     }
   }
   throw new Error(lastErr);
