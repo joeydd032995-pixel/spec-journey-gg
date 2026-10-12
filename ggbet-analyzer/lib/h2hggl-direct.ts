@@ -95,12 +95,12 @@ async function fetchScheduleDay(dateIso: string, revalidate: number): Promise<un
   return Array.isArray(data) ? data : [];
 }
 
-/** Fetch multiple days, batched to 4 concurrent requests at a time.
+/** Fetch multiple days, batched to 8 concurrent requests at a time.
     Past days are final results — cache them for 6h so repeat loads only
     re-fetch today/future instead of hammering the public API. */
 async function fetchDays(offsets: number[]): Promise<unknown[]> {
   const results: unknown[] = [];
-  const batchSize = 4;
+  const batchSize = 8;
   for (let i = 0; i < offsets.length; i += batchSize) {
     const batch = offsets.slice(i, i + batchSize);
     const chunk = await Promise.all(
