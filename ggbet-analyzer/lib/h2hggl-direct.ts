@@ -34,13 +34,18 @@ function describeNetworkError(err: unknown): string {
 }
 
 const MAX_ATTEMPTS = 3;
+/** Total retry budget per request; keeps us under the routes' 30s maxDuration. */
+const TOTAL_BUDGET_MS = 24_000;
 
 async function apiGet(path: string, revalidate = 120): Promise<unknown> {
   const url = `${API_BASE}/${path.replace(/^\/+/, "")}`;
   let lastErr = "";
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
+    const timer = setTimeout(() => controller.abort(), Math.min(10_000, remaining));
     try {
       const res = await fetch(url, {
         signal: controller.signal,
@@ -58,7 +63,9 @@ async function apiGet(path: string, revalidate = 120): Promise<unknown> {
     } finally {
       clearTimeout(timer);
     }
-    if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 400 * attempt));
+    if (attempt < MAX_ATTEMPTS && deadline - Date.now() > 400 * attempt) {
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
   }
   throw new Error(lastErr);
 }
