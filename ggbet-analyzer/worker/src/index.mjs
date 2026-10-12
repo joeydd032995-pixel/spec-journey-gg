@@ -44,7 +44,10 @@ export default {
       cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 120, "400-599": 0 } },
     });
 
-    return new Response(res.body, {
+    // Read the (already decoded) body instead of streaming res.body through, so we never
+    // forward compressed bytes without a matching Content-Encoding header.
+    const body = await res.text();
+    return new Response(body, {
       status: res.status,
       headers: {
         "content-type": res.headers.get("content-type") ?? "application/json",
